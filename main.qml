@@ -12,8 +12,8 @@ ApplicationWindow {
 
     id: window
 
-    width: 1200 * k
-    height: 800 * k
+    width: 1200 * window.k
+    height: 800 * window.k
     visible: true
     title: qsTr("MQTT TLS Client")
 
@@ -37,12 +37,12 @@ ApplicationWindow {
 
         onMessageReceived: function(topic, message) {
             // Add received message to tree view
-            addToMqttTree(topic, message)
+            addToMqttTree(topic, message, true)
         }
     }
 
     // Function to add messages to MQTT tree
-    function addToMqttTree(topic, message) {
+    function addToMqttTree(topic, message, received) {
         var timestamp = new Date().toLocaleTimeString()
         var topicParts = topic.split('/')
 
@@ -86,7 +86,8 @@ ApplicationWindow {
                 "message": message,
                 "timestamp": timestamp,
                 "level": topicParts.length,
-                "historyJson": ""
+                "historyJson": "",
+                "received": received
             })
         }
     }
@@ -131,8 +132,8 @@ ApplicationWindow {
     // Main content with tabs
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 10 * k
-        spacing: 10 * k
+        anchors.margins: 10 * window.k
+        spacing: 10 * window.k
 
         TabBar {
             id: tabBar
@@ -156,16 +157,16 @@ ApplicationWindow {
 
             // Tab 1: Broker Settings + Logs
             RowLayout {
-                spacing: 10 * k
+                spacing: 10 * window.k
 
                 // Left panel - Connection and TLS Settings
                 ScrollView {
-                    Layout.preferredWidth: 400 * k
+                    Layout.preferredWidth: 400 * window.k
                     Layout.fillHeight: true
 
                     ColumnLayout {
                         width: parent.width
-                        spacing: 15 * k
+                        spacing: 15 * window.k
 
                         // Connection Settings
                         GroupBox {
@@ -175,7 +176,7 @@ ApplicationWindow {
 
                             ColumnLayout {
                                 anchors.fill: parent
-                                spacing: 10 * k
+                                spacing: 10 * window.k
 
                                 GridLayout {
                                     columns: 2
@@ -240,7 +241,7 @@ ApplicationWindow {
 
                                     Button {
                                         text: "Disconnect"
-                                        enabled: mqttClient.connected
+                                        enabled: mqttClient.connected || mqttClient.connectionState === "Connecting"
                                         Material.background: Material.Red
                                         onClicked: mqttClient.disconnectFromHost()
                                     }
@@ -273,7 +274,7 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     Label {
                                         text: "CA Certificate:"
-                                        Layout.minimumWidth: 100 * k
+                                        Layout.minimumWidth: 100 * window.k
                                     }
                                     TextField {
                                         id: caCertField
@@ -293,7 +294,7 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     Label {
                                         text: "Client Certificate:"
-                                        Layout.minimumWidth: 100 * k
+                                        Layout.minimumWidth: 100 * window.k
                                     }
                                     TextField {
                                         id: clientCertField
@@ -313,7 +314,7 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     Label {
                                         text: "Client Key:"
-                                        Layout.minimumWidth: 100 * k
+                                        Layout.minimumWidth: 100 * window.k
                                     }
                                     TextField {
                                         id: clientKeyField
@@ -366,7 +367,7 @@ ApplicationWindow {
 
                                 delegate: Rectangle {
                                     width: logView.width
-                                    height: logText.implicitHeight + 10 * k
+                                    height: logText.implicitHeight + 10 * window.k
                                     color: index % 2 === 0 ? Material.background : Qt.darker(Material.background, 1.1)
 
                                     Text {
@@ -390,16 +391,16 @@ ApplicationWindow {
 
             // Tab 2: Subscription, Publishing, and MQTT Tree View
             RowLayout {
-                spacing: 10 * k
+                spacing: 10 * window.k
 
                 // Left panel - Subscription and Publishing
                 ScrollView {
-                    Layout.preferredWidth: 400 * k
+                    Layout.preferredWidth: 400 * window.k
                     Layout.fillHeight: true
 
                     ColumnLayout {
                         width: parent.width
-                        spacing: 15 * k
+                        spacing: 15 * window.k
 
                         // Subscription Settings
                         GroupBox {
@@ -409,7 +410,7 @@ ApplicationWindow {
 
                             ColumnLayout {
                                 anchors.fill: parent
-                                spacing: 10 * k
+                                spacing: 10 * window.k
 
                                 RowLayout {
                                     Layout.fillWidth: true
@@ -430,7 +431,7 @@ ApplicationWindow {
                                         from: 0
                                         to: 2
                                         value: 0
-                                        Layout.preferredWidth: 80 * k
+                                        Layout.preferredWidth: 80 * window.k
                                     }
                                 }
 
@@ -463,7 +464,7 @@ ApplicationWindow {
 
                             ColumnLayout {
                                 anchors.fill: parent
-                                spacing: 10 * k
+                                spacing: 10 * window.k
 
                                 RowLayout {
                                     Layout.fillWidth: true
@@ -484,7 +485,7 @@ ApplicationWindow {
                                         from: 0
                                         to: 2
                                         value: 0
-                                        Layout.preferredWidth: 80 * k
+                                        Layout.preferredWidth: 80 * window.k
                                     }
 
                                     Item { Layout.fillWidth: true }
@@ -498,7 +499,7 @@ ApplicationWindow {
                                 Label { text: "Message:" }
                                 ScrollView {
                                     Layout.fillWidth: true
-                                    Layout.preferredHeight: 150 * k
+                                    Layout.preferredHeight: 150 * window.k
                                     TextArea {
                                         id: publishMessageArea
                                         placeholderText: "Enter message to publish..."
@@ -513,6 +514,7 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     onClicked: {
                                         mqttClient.publish(publishTopicField.text, publishMessageArea.text, publishQosSpinBox.value, retainCheckBox.checked)
+                                        addToMqttTree(publishTopicField.text, publishMessageArea.text, false)
                                         publishMessageArea.clear()
                                     }
                                 }
@@ -562,15 +564,15 @@ ApplicationWindow {
 
                                 delegate: Rectangle {
                                     width: mqttTreeView.width
-                                    height: Math.max(topicText.implicitHeight + messageText.implicitHeight + 20 * k, 60 * k)
+                                    height: Math.max(topicText.implicitHeight + messageText.implicitHeight + 20 * window.k, 60 * window.k)
                                     color: index % 2 === 0 ? Material.background : Qt.darker(Material.background, 1.1)
-                                    border.color: Material.accent
+                                    border.color: model.received === "true" ? Material.color(Material.Orange) : Material.accent
                                     border.width: 1
 
                                     ColumnLayout {
                                         anchors.fill: parent
-                                        anchors.margins: 8 * k
-                                        spacing: 4 * k
+                                        anchors.margins: 8 * window.k
+                                        spacing: 4 * window.k
 
                                         RowLayout {
                                             Layout.fillWidth: true
@@ -640,8 +642,8 @@ ApplicationWindow {
     // Message detail popup
     Popup {
         id: messageDetailDialog
-        width: 600 * k
-        height: 500 * k
+        width: 600 * window.k
+        height: 500 * window.k
         modal: true
         anchors.centerIn: parent
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
@@ -660,8 +662,8 @@ ApplicationWindow {
 
             ColumnLayout {
                 anchors.fill: parent
-                anchors.margins: 15 * k
-                spacing: 10 * k
+                anchors.margins: 15 * window.k
+                spacing: 10 * window.k
 
                 RowLayout {
                     Layout.fillWidth: true
@@ -677,8 +679,8 @@ ApplicationWindow {
                         text: "✕"
                         flat: true
                         onClicked: messageDetailDialog.close()
-                        Layout.preferredWidth: 30 * k
-                        Layout.preferredHeight: 30 * k
+                        Layout.preferredWidth: 30 * window.k
+                        Layout.preferredHeight: 30 * window.k
                     }
                 }
 
@@ -689,7 +691,7 @@ ApplicationWindow {
 
                 ScrollView {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 50 * k
+                    Layout.preferredHeight: 50 * window.k
 
                     TextArea {
                         text: messageDetailDialog.topic
@@ -713,7 +715,7 @@ ApplicationWindow {
 
                 ScrollView {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 120 * k
+                    Layout.preferredHeight: 120 * window.k
 
                     TextArea {
                         text: messageDetailDialog.message
@@ -767,7 +769,7 @@ ApplicationWindow {
 
                         delegate: Rectangle {
                             width: historyListView.width
-                            height: Math.max(historyMessageText.implicitHeight + 20 * k, 50 * k)
+                            height: Math.max(historyMessageText.implicitHeight + 20 * window.k, 50 * window.k)
                             color: index % 2 === 0 ? Qt.darker(Material.backgroundColor, 1.3) : Qt.darker(Material.backgroundColor, 1.5)
                             border.color: Material.accent
                             border.width: 0.5
@@ -775,8 +777,8 @@ ApplicationWindow {
 
                             ColumnLayout {
                                 anchors.fill: parent
-                                anchors.margins: 8 * k
-                                spacing: 4 * k
+                                anchors.margins: 8 * window.k
+                                spacing: 4 * window.k
 
                                 RowLayout {
                                     Layout.fillWidth: true
@@ -785,7 +787,7 @@ ApplicationWindow {
                                         text: "#" + (messageDetailDialog.history.length - index)
                                         font.bold: true
                                         color: Material.accent
-                                        Layout.minimumWidth: 30 * k
+                                        Layout.minimumWidth: 30 * window.k
                                     }
 
                                     Item { Layout.fillWidth: true }
