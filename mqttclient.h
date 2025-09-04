@@ -11,6 +11,8 @@
 #include <QTimer>
 #include <QDebug>
 #include <QQmlEngine>
+#include <QStringList>
+#include <QHash>
 
 class MqttClient : public QObject
 {
@@ -27,6 +29,7 @@ class MqttClient : public QObject
     Q_PROPERTY(QString caCertPath READ caCertPath WRITE setCaCertPath NOTIFY caCertPathChanged)
     Q_PROPERTY(QString clientCertPath READ clientCertPath WRITE setClientCertPath NOTIFY clientCertPathChanged)
     Q_PROPERTY(QString clientKeyPath READ clientKeyPath WRITE setClientKeyPath NOTIFY clientKeyPathChanged)
+    Q_PROPERTY(int activeSubscriptionsCount READ activeSubscriptionsCount NOTIFY activeSubscriptionsChanged)
 
 public:
     explicit MqttClient(QObject *parent = nullptr);
@@ -43,6 +46,7 @@ public:
     QString caCertPath() const { return m_caCertPath; }
     QString clientCertPath() const { return m_clientCertPath; }
     QString clientKeyPath() const { return m_clientKeyPath; }
+    int activeSubscriptionsCount() const { return m_activeSubscriptions.size(); }
 
     // Property setters
     void setHostName(const QString &hostName);
@@ -54,12 +58,24 @@ public:
     void setClientCertPath(const QString &path);
     void setClientKeyPath(const QString &path);
 
+    QStringList getActiveSubscriptions() const;
+    bool isSubscribedTo(const QString &topic) const;
+
+
 public slots:
     void connectToHost();
     void disconnectFromHost();
     void subscribe(const QString &topic, int qos = 0);
     void unsubscribe(const QString &topic);
+    void unsubscribeAll();
     void publish(const QString &topic, const QString &message, int qos = 0, bool retain = false);
+    
+
+    // Topic validation and helper functions
+    Q_INVOKABLE bool isValidTopicFilter(const QString &topic) const;
+    Q_INVOKABLE bool isWildcardTopic(const QString &topic) const;
+    Q_INVOKABLE QString getTopicPattern(const QString &topic) const;
+    Q_INVOKABLE int estimateTrafficLevel(const QString &topic) const;
 
 signals:
     void connected();
@@ -69,6 +85,9 @@ signals:
     void messageReceived(const QString &topic, const QString &message);
     void errorOccurred(const QString &error);
     void logMessage(const QString &message);
+    void subscriptionAdded(const QString &topic, int qos);
+    void subscriptionRemoved(const QString &topic);
+    void activeSubscriptionsChanged();
     
     // Property change signals
     void hostNameChanged();
@@ -87,12 +106,15 @@ private slots:
     void onErrorChanged(QMqttClient::ClientError error);
     void onMessageReceived(QMqttMessage message);
     void onPingResponseReceived();
+    void onSubscriptionStateChanged(QMqttSubscription::SubscriptionState state);
 
 private:
     void setupSslConfiguration();
     void setupConnectionProperties();
     void loadCertificates();
     void emitLogMessage(const QString &message);
+    void addActiveSubscription(const QString &topic, int qos);
+    void removeActiveSubscription(const QString &topic);
     
     QMqttClient *m_client;
     QSslConfiguration m_sslConfig;
@@ -110,8 +132,16 @@ private:
     QString m_clientCertPath;
     QString m_clientKeyPath;
     
+    // Subscription management
+    QHash<QString, QMqttSubscription*> m_activeSubscriptions;
+    QHash<QString, int> m_subscriptionQos;
+    
     bool m_autoReconnect;
     int m_reconnectInterval;
+    
+    // Statistics
+    quint64 m_messagesReceived;
+    quint64 m_messagesPublished;
 };
 
 #endif // MQTTCLIENT_H
