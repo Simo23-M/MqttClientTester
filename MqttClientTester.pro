@@ -8,11 +8,13 @@ TEMPLATE = app
 SOURCES += \
     main.cpp \
     mqttclient.cpp \
-    applicationcontroller.cpp
+    applicationcontroller.cpp \
+    commandqueue.cpp
 
 HEADERS += \
     mqttclient.h \
-    applicationcontroller.h
+    applicationcontroller.h \
+    commandqueue.h
 
 RESOURCES += \
     qml.qrc
@@ -31,3 +33,6 @@ VERSION = 1.0.0
 QMAKE_TARGET_COMPANY = "Your Company"
 QMAKE_TARGET_PRODUCT = "MQTT TLS Client QML"
 QMAKE_TARGET_DESCRIPTION = "Qt MQTT Client with TLS Support (QML)"
+
+DISTFILES += \
+    resouces/preset_example_json.json

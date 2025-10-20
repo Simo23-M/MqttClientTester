@@ -6,6 +6,8 @@ import QtQuick.Layouts 1.15
 import Qt.labs.platform 1.1
 import MqttClient 1.0
 import AppController 1.0
+import CommandQueue 1.0
+
 
 ApplicationWindow {
     property double k: 1 // Scale factor for high DPI displays
@@ -23,6 +25,7 @@ ApplicationWindow {
 
     property alias mqttClient: mqttClient
     property string fontChosed: "Consolas, Monaco, monospace"
+    property alias commandQueue: commandQueue
 
     MqttClient {
         id: mqttClient
@@ -39,6 +42,28 @@ ApplicationWindow {
         onMessageReceived: function(topic, message) {
             // Add received message to tree view
             addToMqttTree(topic, message, true)
+        }
+    }
+
+    CommandQueue {
+        id: commandQueue
+
+        onLogMessage: function(message) {
+            logModel.append({"message": message})
+            logView.positionViewAtEnd()
+        }
+
+        onPublishRequested: function(topic, payload, qos, retain) {
+            mqttClient.publish(topic, payload, qos, retain)
+        }
+
+        onQueueFinished: {
+            // Optional: Show notification or perform action when queue finishes
+        }
+
+        onErrorOccurred: function(error) {
+            logModel.append({"message": "[ERROR] " + error})
+            logView.positionViewAtEnd()
         }
     }
 
@@ -163,6 +188,43 @@ ApplicationWindow {
         }
     }
 
+    FileDialog {
+        id: presetFileDialog
+        title: "Select Preset JSON File"
+        nameFilters: ["JSON Files (*.json)", "All Files (*)"]
+        folder: AppController.localFileToUrl(AppController.getDocumentsPath())
+        fileMode: FileDialog.OpenFile
+        onAccepted: {
+            var filePath = AppController.urlToLocalFile(file)
+            if (commandQueue.loadPresetsFromFile(filePath)) {
+                // Refresh preset list
+                updatePresetList()
+            }
+        }
+    }
+
+    FileDialog {
+        id: savePresetFileDialog
+        title: "Save Preset JSON File"
+        nameFilters: ["JSON Files (*.json)", "All Files (*)"]
+        folder: AppController.localFileToUrl(AppController.getDocumentsPath())
+        fileMode: FileDialog.SaveFile
+        onAccepted: {
+            var filePath = AppController.urlToLocalFile(file)
+            commandQueue.savePresetsToFile(filePath)
+        }
+    }
+
+    // Function to update preset list
+    function updatePresetList() {
+        presetListModel.clear()
+        var presets = commandQueue.getPresetNames()
+        for (var i = 0; i < presets.length; i++) {
+            presetListModel.append({"name": presets[i]})
+        }
+    }
+
+
     // Main content with tabs
     ColumnLayout {
         anchors.fill: parent
@@ -185,6 +247,11 @@ ApplicationWindow {
 
             TabButton {
                 text: "Topic Management"
+                font.pixelSize: 14
+            }
+
+            TabButton {
+                text: "Command Queue"
                 font.pixelSize: 14
             }
         }
@@ -687,7 +754,7 @@ ApplicationWindow {
                 }
             }
 
-            // Tab 3: Topic Management (New Tab)
+            // Tab 3: Topic Management
             RowLayout {
                 spacing: 10 * window.k
 
@@ -1060,6 +1127,728 @@ ApplicationWindow {
                                 }
                             }
                         }
+                    }
+                }
+            }
+
+            // Tab 4: Topic preset
+            RowLayout {
+                spacing: 10 * window.k
+
+                // Left panel - Preset Management and Queue Builder
+                ScrollView {
+                    Layout.preferredWidth: 500 * window.k
+                    Layout.fillHeight: true
+                    contentWidth: 470 * window.k
+
+                    ColumnLayout {
+                        width: parent.width
+                        spacing: 15 * window.k
+
+                        // Preset File Management
+                        GroupBox {
+                            title: "Preset File Management"
+                            Layout.fillWidth: true
+                            Material.elevation: 2
+
+                            ColumnLayout {
+                                anchors.fill: parent
+                                spacing: 10 * window.k
+
+                                Label {
+                                    text: commandQueue.loadedPresetFile !== "" ?
+                                          "Loaded: " + commandQueue.loadedPresetFile.split('/').pop() :
+                                          "No preset file loaded"
+                                    font.pixelSize: 11
+                                    color: commandQueue.loadedPresetFile !== "" ?
+                                           Material.accent : Material.color(Material.Orange)
+                                    Layout.fillWidth: true
+                                    wrapMode: Text.Wrap
+                                }
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 10 * window.k
+
+                                    Button {
+                                        text: "Load Presets"
+                                        Material.background: Material.Blue
+                                        Layout.fillWidth: true
+                                        onClicked: presetFileDialog.open()
+                                    }
+
+                                    Button {
+                                        text: "Save Presets"
+                                        Material.background: Material.Green
+                                        enabled: commandQueue.getPresetNames().length > 0
+                                        Layout.fillWidth: true
+                                        onClicked: savePresetFileDialog.open()
+                                    }
+                                }
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 10 * window.k
+
+                                    Button {
+                                        text: "View JSON"
+                                        Material.background: Material.Indigo
+                                        enabled: commandQueue.getPresetNames().length > 0
+                                        Layout.fillWidth: true
+                                        onClicked: {
+                                            jsonViewDialog.jsonContent = commandQueue.getPresetsJson()
+                                            jsonViewDialog.open()
+                                        }
+                                    }
+
+                                    Button {
+                                        text: "Clear All"
+                                        Material.background: Material.Red
+                                        enabled: commandQueue.getPresetNames().length > 0
+                                        Layout.fillWidth: true
+                                        onClicked: {
+                                            commandQueue.clearPresets()
+                                            updatePresetList()
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Available Presets
+                        GroupBox {
+                            title: "Available Presets (" + presetListModel.count + ")"
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            Layout.minimumHeight: 300 * window.k
+                            Material.elevation: 2
+
+                            ColumnLayout {
+                                anchors.fill: parent
+                                spacing: 10 * window.k
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+
+                                    TextField {
+                                        id: presetSearchField
+                                        placeholderText: "Search presets..."
+                                        Layout.fillWidth: true
+                                    }
+
+                                    Button {
+                                        text: "🔄"
+                                        onClicked: updatePresetList()
+                                        ToolTip.visible: hovered
+                                        ToolTip.text: "Refresh preset list"
+                                    }
+                                }
+
+                                ScrollView {
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    clip: true
+
+                                    ListView {
+                                        id: presetListView
+                                        model: ListModel {
+                                            id: presetListModel
+                                        }
+
+                                        delegate: Rectangle {
+                                            width: presetListView.width
+                                            height: 70 * window.k
+                                            color: index % 2 === 0 ? Material.background : Qt.darker(Material.background, 1.1)
+                                            border.color: Material.accent
+                                            border.width: 1
+
+                                            RowLayout {
+                                                anchors.fill: parent
+                                                anchors.margins: 10 * window.k
+                                                spacing: 10 * window.k
+
+                                                ColumnLayout {
+                                                    Layout.fillWidth: true
+                                                    spacing: 5 * window.k
+
+                                                    Text {
+                                                        text: model.name
+                                                        color: Material.accent
+                                                        font.family: window.fontChosed
+                                                        font.pixelSize: 13
+                                                        font.bold: true
+                                                        Layout.fillWidth: true
+                                                    }
+
+                                                    Text {
+                                                        text: "Click to view details"
+                                                        color: Material.foreground
+                                                        font.pixelSize: 10
+                                                        opacity: 0.6
+                                                    }
+                                                }
+
+                                                Button {
+                                                    text: "Add to Queue"
+                                                    Material.background: Material.Green
+                                                    font.pixelSize: 11
+                                                    implicitHeight: 30 * window.k
+                                                    onClicked: {
+                                                        commandQueue.addPresetToQueue(model.name)
+                                                        updateQueueList()
+                                                    }
+                                                }
+
+                                                Button {
+                                                    text: "Execute Now"
+                                                    Material.background: Material.Purple
+                                                    font.pixelSize: 11
+                                                    implicitHeight: 30 * window.k
+                                                    enabled: mqttClient.connected
+                                                    onClicked: {
+                                                        commandQueue.addPresetToQueue(model.name)
+                                                        updateQueueList()
+                                                        commandQueue.executeCommand(commandQueue.queueSize - 1)
+                                                    }
+                                                }
+                                            }
+
+                                            MouseArea {
+                                                anchors.fill: parent
+                                                onClicked: {
+                                                    presetDetailDialog.presetName = model.name
+                                                    presetDetailDialog.presetData = commandQueue.getPresetData(model.name)
+                                                    presetDetailDialog.open()
+                                                }
+                                                propagateComposedEvents: true
+                                                z: -1
+                                            }
+                                        }
+
+                                        // Empty state
+                                        Rectangle {
+                                            visible: presetListModel.count === 0
+                                            width: presetListView.width
+                                            height: 150 * window.k
+                                            color: "transparent"
+                                            border.color: Material.accent
+                                            border.width: 1
+                                            opacity: 0.5
+
+                                            ColumnLayout {
+                                                anchors.centerIn: parent
+                                                spacing: 10 * window.k
+
+                                                Text {
+                                                    text: "📋"
+                                                    font.pixelSize: 40
+                                                    horizontalAlignment: Text.AlignHCenter
+                                                    Layout.alignment: Qt.AlignHCenter
+                                                }
+
+                                                Text {
+                                                    text: "No presets loaded"
+                                                    color: Material.foreground
+                                                    opacity: 0.7
+                                                    font.italic: true
+                                                    horizontalAlignment: Text.AlignHCenter
+                                                    Layout.alignment: Qt.AlignHCenter
+                                                }
+
+                                                Text {
+                                                    text: "Load a JSON preset file to get started"
+                                                    color: Material.foreground
+                                                    opacity: 0.5
+                                                    font.pixelSize: 10
+                                                    horizontalAlignment: Text.AlignHCenter
+                                                    Layout.alignment: Qt.AlignHCenter
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Item { Layout.fillHeight: true }
+                    }
+                }
+
+                // Right panel - Command Queue
+                GroupBox {
+                    title: "Command Queue"
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    Material.elevation: 2
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        spacing: 10 * window.k
+
+                        // Queue Controls
+                        Rectangle {
+                            Layout.fillWidth: true
+                            height: 80 * window.k
+                            color: Qt.darker(Material.backgroundColor, 1.2)
+                            radius: 8
+                            border.color: Material.accent
+                            border.width: 1
+
+                            ColumnLayout {
+                                anchors.fill: parent
+                                anchors.margins: 10 * window.k
+                                spacing: 8 * window.k
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 10 * window.k
+
+                                    Label {
+                                        text: "Queue Size: " + commandQueue.queueSize
+                                        font.bold: true
+                                        color: Material.foreground
+                                    }
+
+                                    Label {
+                                        text: commandQueue.isRunning ?
+                                              "● Running [" + (commandQueue.currentIndex + 1) + "/" + commandQueue.queueSize + "]" :
+                                              "○ Idle"
+                                        font.bold: true
+                                        color: commandQueue.isRunning ?
+                                               Material.color(Material.Green) :
+                                               Material.color(Material.Grey)
+                                    }
+
+                                    Item { Layout.fillWidth: true }
+
+                                    Button {
+                                        text: "Clear Queue"
+                                        Material.background: Material.Red
+                                        font.pixelSize: 11
+                                        implicitHeight: 25 * window.k
+                                        enabled: commandQueue.queueSize > 0 && !commandQueue.isRunning
+                                        onClicked: {
+                                            commandQueue.clearQueue()
+                                            updateQueueList()
+                                        }
+                                    }
+                                }
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 10 * window.k
+
+                                    Button {
+                                        text: "▶️ Start"
+                                        Material.background: Material.Green
+                                        enabled: mqttClient.connected && commandQueue.queueSize > 0 && !commandQueue.isRunning
+                                        Layout.fillWidth: true
+                                        onClicked: commandQueue.startQueue()
+                                    }
+
+                                    Button {
+                                        text: "⏹️ Stop"
+                                        Material.background: Material.Red
+                                        enabled: commandQueue.isRunning
+                                        Layout.fillWidth: true
+                                        onClicked: commandQueue.stopQueue()
+                                    }
+
+                                    Button {
+                                        text: "⏭️ Next"
+                                        Material.background: Material.Orange
+                                        enabled: mqttClient.connected && commandQueue.queueSize > 0
+                                        Layout.fillWidth: true
+                                        onClicked: commandQueue.executeNext()
+                                    }
+                                }
+                            }
+                        }
+
+                        // Queue List
+                        ScrollView {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            clip: true
+
+                            ListView {
+                                id: queueListView
+                                model: ListModel {
+                                    id: queueListModel
+                                }
+
+                                delegate: Rectangle {
+                                    width: queueListView.width
+                                    height: 80 * window.k
+                                    color: index === commandQueue.currentIndex && commandQueue.isRunning ?
+                                           Qt.darker(Material.color(Material.Green), 1.8) :
+                                           index % 2 === 0 ? Material.background : Qt.darker(Material.background, 1.1)
+                                    border.color: index === commandQueue.currentIndex && commandQueue.isRunning ?
+                                                 Material.color(Material.Green) : Material.accent
+                                    border.width: index === commandQueue.currentIndex && commandQueue.isRunning ? 2 : 1
+
+                                    RowLayout {
+                                        anchors.fill: parent
+                                        anchors.margins: 10 * window.k
+                                        spacing: 10 * window.k
+
+                                        // Position indicator
+                                        Rectangle {
+                                            width: 35 * window.k
+                                            height: 35 * window.k
+                                            radius: 17.5 * window.k
+                                            color: Material.accent
+
+                                            Label {
+                                                text: (index + 1).toString()
+                                                font.bold: true
+                                                font.pixelSize: 14
+                                                color: "white"
+                                                anchors.centerIn: parent
+                                            }
+                                        }
+
+                                        ColumnLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 4 * window.k
+
+                                            Text {
+                                                text: model.name
+                                                color: Material.accent
+                                                font.family: window.fontChosed
+                                                font.pixelSize: 12
+                                                font.bold: true
+                                                Layout.fillWidth: true
+                                            }
+
+                                            Text {
+                                                text: "Topic: " + model.topic
+                                                color: Material.foreground
+                                                font.pixelSize: 10
+                                                opacity: 0.8
+                                                Layout.fillWidth: true
+                                                elide: Text.ElideRight
+                                            }
+
+                                            RowLayout {
+                                                spacing: 10 * window.k
+
+                                                Text {
+                                                    text: "QoS: " + model.qos
+                                                    color: Material.foreground
+                                                    font.pixelSize: 9
+                                                    opacity: 0.6
+                                                }
+
+                                                Text {
+                                                    text: "Delay: " + model.delay + "ms"
+                                                    color: Material.foreground
+                                                    font.pixelSize: 9
+                                                    opacity: 0.6
+                                                }
+
+                                                Text {
+                                                    text: model.retain ? "RETAIN" : ""
+                                                    color: Material.color(Material.Orange)
+                                                    font.pixelSize: 9
+                                                    font.bold: true
+                                                    visible: model.retain
+                                                }
+                                            }
+                                        }
+
+                                        ColumnLayout {
+                                            spacing: 5 * window.k
+
+                                            Button {
+                                                text: "⬆️"
+                                                enabled: index > 0 && !commandQueue.isRunning
+                                                implicitWidth: 30 * window.k
+                                                implicitHeight: 25 * window.k
+                                                font.pixelSize: 12
+                                                onClicked: {
+                                                    commandQueue.moveCommandUp(index)
+                                                    updateQueueList()
+                                                }
+                                            }
+
+                                            Button {
+                                                text: "⬇️"
+                                                enabled: index < queueListModel.count - 1 && !commandQueue.isRunning
+                                                implicitWidth: 30 * window.k
+                                                implicitHeight: 25 * window.k
+                                                font.pixelSize: 12
+                                                onClicked: {
+                                                    commandQueue.moveCommandDown(index)
+                                                    updateQueueList()
+                                                }
+                                            }
+                                        }
+
+                                        Button {
+                                            text: "❌"
+                                            Material.background: Material.Red
+                                            enabled: !commandQueue.isRunning
+                                            implicitWidth: 30 * window.k
+                                            implicitHeight: 30 * window.k
+                                            font.pixelSize: 12
+                                            onClicked: {
+                                                commandQueue.removeCommandFromQueue(index)
+                                                updateQueueList()
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Empty state
+                                Rectangle {
+                                    visible: queueListModel.count === 0
+                                    width: queueListView.width
+                                    height: 200 * window.k
+                                    color: "transparent"
+                                    border.color: Material.accent
+                                    border.width: 1
+                                    opacity: 0.5
+
+                                    ColumnLayout {
+                                        anchors.centerIn: parent
+                                        spacing: 10 * window.k
+
+                                        Text {
+                                            text: "📝"
+                                            font.pixelSize: 48
+                                            horizontalAlignment: Text.AlignHCenter
+                                            Layout.alignment: Qt.AlignHCenter
+                                        }
+
+                                        Text {
+                                            text: "Queue is empty"
+                                            color: Material.foreground
+                                            opacity: 0.7
+                                            font.italic: true
+                                            horizontalAlignment: Text.AlignHCenter
+                                            Layout.alignment: Qt.AlignHCenter
+                                        }
+
+                                        Text {
+                                            text: "Add commands from presets or create custom ones"
+                                            color: Material.foreground
+                                            opacity: 0.5
+                                            font.pixelSize: 11
+                                            horizontalAlignment: Text.AlignHCenter
+                                            Layout.alignment: Qt.AlignHCenter
+                                            Layout.maximumWidth: 250 * window.k
+                                            wrapMode: Text.WordWrap
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Function to update queue list
+            function updateQueueList() {
+                queueListModel.clear()
+                var items = commandQueue.getQueueItems()
+                for (var i = 0; i < items.length; i++) {
+                    queueListModel.append(items[i])
+                }
+            }
+
+            // Preset Detail Dialog
+            Popup {
+                id: presetDetailDialog
+                width: 600 * window.k
+                height: 500 * window.k
+                modal: true
+                anchors.centerIn: parent
+                closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+
+                property string presetName: ""
+                property string presetData: ""
+
+                background: Rectangle {
+                    color: Material.backgroundColor
+                    border.color: Material.accent
+                    border.width: 1
+                    radius: 8
+                }
+
+                contentItem: ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: 15 * window.k
+                    spacing: 12 * window.k
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 10 * window.k
+
+                        Label {
+                            text: "Preset Details: " + presetDetailDialog.presetName
+                            font.bold: true
+                            font.pixelSize: 16
+                            Layout.fillWidth: true
+                            color: Material.foreground
+                        }
+
+                        Button {
+                            text: "✕"
+                            flat: true
+                            onClicked: presetDetailDialog.close()
+                            Layout.preferredWidth: 32 * window.k
+                            Layout.preferredHeight: 32 * window.k
+                        }
+                    }
+
+                    ScrollView {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        clip: true
+
+                        TextArea {
+                            text: presetDetailDialog.presetData
+                            readOnly: true
+                            wrapMode: TextArea.Wrap
+                            selectByMouse: true
+                            font.family: window.fontChosed
+                            font.pixelSize: 11
+                            color: Material.foreground
+                            background: Rectangle {
+                                color: Qt.darker(Material.backgroundColor, 1.3)
+                                border.color: Material.accent
+                                border.width: 1
+                                radius: 4
+                            }
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 10 * window.k
+
+                        Button {
+                            text: "Add to Queue"
+                            Material.background: Material.Green
+                            Layout.fillWidth: true
+                            onClicked: {
+                                commandQueue.addPresetToQueue(presetDetailDialog.presetName)
+                                updateQueueList()
+                                presetDetailDialog.close()
+                            }
+                        }
+
+                        Button {
+                            text: "Execute Now"
+                            Material.background: Material.Purple
+                            enabled: mqttClient.connected
+                            Layout.fillWidth: true
+                            onClicked: {
+                                commandQueue.addPresetToQueue(presetDetailDialog.presetName)
+                                updateQueueList()
+                                commandQueue.executeCommand(commandQueue.queueSize - 1)
+                                presetDetailDialog.close()
+                            }
+                        }
+
+                        Button {
+                            text: "Close"
+                            Material.background: Material.Grey
+                            Layout.fillWidth: true
+                            onClicked: presetDetailDialog.close()
+                        }
+                    }
+                }
+            }
+
+            // JSON View Dialog
+            Popup {
+                id: jsonViewDialog
+                width: 700 * window.k
+                height: 600 * window.k
+                modal: true
+                anchors.centerIn: parent
+                closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+
+                property string jsonContent: ""
+
+                background: Rectangle {
+                    color: Material.backgroundColor
+                    border.color: Material.accent
+                    border.width: 1
+                    radius: 8
+                }
+
+                contentItem: ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: 15 * window.k
+                    spacing: 12 * window.k
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 10 * window.k
+
+                        Label {
+                            text: "Preset JSON Configuration"
+                            font.bold: true
+                            font.pixelSize: 16
+                            Layout.fillWidth: true
+                            color: Material.foreground
+                        }
+
+                        Button {
+                            text: "Copy"
+                            Material.background: Material.Blue
+                            onClicked: {
+                                // Copy to clipboard functionality would need Qt.labs.platform
+                                // For now, user can select and copy manually
+                            }
+                        }
+
+                        Button {
+                            text: "✕"
+                            flat: true
+                            onClicked: jsonViewDialog.close()
+                            Layout.preferredWidth: 32 * window.k
+                            Layout.preferredHeight: 32 * window.k
+                        }
+                    }
+
+                    Label {
+                        text: "All available presets in JSON format"
+                        font.pixelSize: 11
+                        opacity: 0.7
+                        color: Material.foreground
+                    }
+
+                    ScrollView {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        clip: true
+
+                        TextArea {
+                            text: jsonViewDialog.jsonContent
+                            readOnly: true
+                            wrapMode: TextArea.Wrap
+                            selectByMouse: true
+                            font.family: window.fontChosed
+                            font.pixelSize: 10
+                            color: Material.accent
+                            background: Rectangle {
+                                color: Qt.darker(Material.backgroundColor, 1.4)
+                                border.color: Material.accent
+                                border.width: 1
+                                radius: 4
+                            }
+                        }
+                    }
+
+                    Button {
+                        text: "Close"
+                        Material.background: Material.Grey
+                        Layout.alignment: Qt.AlignHCenter
+                        onClicked: jsonViewDialog.close()
                     }
                 }
             }

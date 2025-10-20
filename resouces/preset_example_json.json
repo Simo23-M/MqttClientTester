@@ -1,0 +1,92 @@
+{
+  "light_on": {
+    "topic": "home/livingroom/light",
+    "payload": "{\"state\":\"ON\",\"brightness\":255}",
+    "qos": 1,
+    "retain": true,
+    "delay": 1000,
+    "condition": "",
+    "description": "Turn on living room light at full brightness"
+  },
+  "light_dim": {
+    "topic": "home/livingroom/light",
+    "payload": "{\"state\":\"ON\",\"brightness\":128}",
+    "qos": 1,
+    "retain": true,
+    "delay": 2000,
+    "condition": "",
+    "description": "Dim living room light to 50%"
+  },
+  "light_off": {
+    "topic": "home/livingroom/light",
+    "payload": "{\"state\":\"OFF\"}",
+    "qos": 1,
+    "retain": true,
+    "delay": 1000,
+    "condition": "",
+    "description": "Turn off living room light"
+  },
+  "thermostat_heat": {
+    "topic": "home/thermostat/mode",
+    "payload": "{\"mode\":\"heat\",\"temperature\":22.5}",
+    "qos": 1,
+    "retain": false,
+    "delay": 500,
+    "condition": "",
+    "description": "Set thermostat to heating mode at 22.5°C"
+  },
+  "thermostat_cool": {
+    "topic": "home/thermostat/mode",
+    "payload": "{\"mode\":\"cool\",\"temperature\":24.0}",
+    "qos": 1,
+    "retain": false,
+    "delay": 500,
+    "condition": "",
+    "description": "Set thermostat to cooling mode at 24°C"
+  },
+  "sensor_read": {
+    "topic": "sensors/temperature/read",
+    "payload": "{\"cmd\":\"read\"}",
+    "qos": 0,
+    "retain": false,
+    "delay": 3000,
+    "condition": "",
+    "description": "Request temperature sensor reading"
+  },
+  "alarm_arm": {
+    "topic": "security/alarm/arm",
+    "payload": "{\"state\":\"armed\",\"mode\":\"away\"}",
+    "qos": 2,
+    "retain": true,
+    "delay": 5000,
+    "condition": "",
+    "description": "Arm security alarm in away mode"
+  },
+  "alarm_disarm": {
+    "topic": "security/alarm/arm",
+    "payload": "{\"state\":\"disarmed\"}",
+    "qos": 2,
+    "retain": true,
+    "delay": 1000,
+    "condition": "",
+    "description": "Disarm security alarm"
+  },
+  "doorbell_ring": {
+    "topic": "home/doorbell/event",
+    "payload": "{\"event\":\"ring\",\"timestamp\":\"{{timestamp}}\"}",
+    "qos": 1,
+    "retain": false,
+    "delay": 100,
+    "condition": "",
+    "description": "Simulate doorbell ring event"
+  },
+  "camera_snapshot": {
+    "topic": "security/camera/front/cmd",
+    "payload": "{\"cmd\":\"snapshot\",\"quality\":\"high\"}",
+    "qos": 1,
+    "retain": false,
+    "delay": 2000,
+    "condition": "",
+    "description": "Request snapshot from front camera"
+  }
+}
