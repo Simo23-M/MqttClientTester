@@ -1,0 +1,10 @@
+module components
+StyledTextField 1.0 StyledTextField.qml
+StyledButton 1.0 StyledButton.qml
+StyledGroupBox 1.0 StyledGroupBox.qml
+FilePickerRow 1.0 FilePickerRow.qml
+MessageDelegate 1.0 MessageDelegate.qml
+LogDelegate 1.0 LogDelegate.qml
+QosBadge 1.0 QosBadge.qml
+EmptyStateView 1.0 EmptyStateView.qml
+ToastNotification 1.0 ToastNotification.qml

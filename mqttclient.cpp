@@ -11,11 +11,13 @@ MqttClient::MqttClient(QObject *parent)
     , m_client(new QMqttClient(this))
     , m_reconnectTimer(new QTimer(this))
     , m_hostName("localhost")
-    , m_port(8883)
+    , m_port(1883)
     , m_autoReconnect(true)
     , m_reconnectInterval(5000)
     , m_messagesReceived(0)
     , m_messagesPublished(0)
+    , m_username("")
+    , m_password("")
 {
     // Setup MQTT client connections
     connect(m_client, &QMqttClient::connected, this, &MqttClient::onConnected);

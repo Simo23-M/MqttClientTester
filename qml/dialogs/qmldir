@@ -1,0 +1,5 @@
+module dialogs
+MessageDetailDialog 1.0 MessageDetailDialog.qml
+PresetDetailDialog 1.0 PresetDetailDialog.qml
+JsonViewDialog 1.0 JsonViewDialog.qml
+TopicFilterHelpDialog 1.0 TopicFilterHelpDialog.qml

@@ -47,7 +47,7 @@ mqtt_tls_client_qml/
 1. **Install Qt 6** with QML support:
    ```bash
    # Ubuntu/Debian
-   sudo apt-get install qt6-base-dev qt6-declarative-dev qt6-mqtt-dev
+   sudo apt-get install qt6-base-dev qt6-declarative-dev 
    ```
 
 2. **Install OpenSSL**:
@@ -55,6 +55,30 @@ mqtt_tls_client_qml/
    # Ubuntu/Debian
    sudo apt-get install libssl-dev
    ```
+3. **Build qtmqtt**
+
+   ```bash
+    sudo apt-get update
+    sudo apt-get install git cmake ninja-build
+
+    cd ~/Downloads
+    git clone https://code.qt.io/qt/qtmqtt.git
+    cd qtmqtt
+    git checkout v6.8.3
+
+    # Create build directory
+    mkdir build && cd build
+
+    # Configure with your Qt installation
+    ~/Qt/6.8.3/gcc_64/bin/qt-cmake .. -GNinja -DCMAKE_INSTALL_PREFIX=~/Qt/6.8.3/gcc_64
+
+    # Build
+    cmake --build .
+
+    # Install
+    cmake --install .
+   ```
+
 
 ### Compilation
 

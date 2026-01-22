@@ -5,7 +5,7 @@
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QTimer>
-#include <QQueue>
+#include <QList>
 #include <QQmlEngine>
 
 
@@ -17,6 +17,7 @@ struct MqttCommand {
     bool retain;
     int delay; // milliseconds
     QString condition;
+    QString description; // Added for v2 preset format
 };
 Q_DECLARE_METATYPE(MqttCommand)
 
@@ -30,15 +31,17 @@ class CommandQueue : public QObject
     Q_PROPERTY(int queueSize READ queueSize NOTIFY queueSizeChanged)
     Q_PROPERTY(int currentIndex READ currentIndex NOTIFY currentIndexChanged)
     Q_PROPERTY(QString loadedPresetFile READ loadedPresetFile NOTIFY loadedPresetFileChanged)
+    Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged)
 
 
 public:
     explicit CommandQueue(QObject *parent = nullptr);
 
     bool isRunning() const { return m_isRunning; }
-    int queueSize() const { return m_queueSize; }
+    int queueSize() const { return m_commandList.size(); }
     int currentIndex() const { return m_currentIndex; }
     QString loadedPresetFile() const { return m_loadedPresetFile; }
+    QString lastError() const { return m_lastError; }
 
 public slots:
     // Preset management
@@ -46,7 +49,7 @@ public slots:
     bool savePresetsToFile(const QString &filePath);
     Q_INVOKABLE QString getPresetsJson() const;
 
-    // Queue management
+    // Queue management - O(1) operations with QList
     void addCommandToQueue(const QString &name, const QString &topic,
                            const QString &payload, int qos, bool retain, int delay);
     void removeCommandFromQueue(int index);
@@ -68,14 +71,16 @@ public slots:
     void addPresetToQueue(const QString &presetName);
     void clearPresets();
 
-    // Queue inspection
+    // Queue inspection - O(1) access
     Q_INVOKABLE QVariantList getQueueItems() const;
+    Q_INVOKABLE QVariantMap getCommandAtIndex(int index) const;
 
 signals:
     void isRunningChanged();
     void queueSizeChanged();
     void currentIndexChanged();
     void loadedPresetFileChanged();
+    void lastErrorChanged();
     void commandExecuted(const QString &name, const QString &topic, const QString &payload);
     void queueFinished();
     void errorOccurred(const QString &error);
@@ -84,12 +89,16 @@ signals:
 
 
 private:
+    // Member variables - ordered to match initialization order in constructor
+    QTimer *m_timer;
     bool m_isRunning;
-    int m_queueSize;
-    int m_currentIndex;
-    QString m_loadedPresetFile;
-
     bool m_isPaused;
+    int m_currentIndex;
+    int m_presetVersion; // Track preset format version
+    QString m_loadedPresetFile;
+    QString m_lastError;
+    QList<MqttCommand> m_commandList;  // Changed from QQueue for O(1) indexed access
+    QJsonObject m_presets;
 
 private slots:
     void onTimerTimeout();
@@ -98,11 +107,13 @@ private:
     void executeCurrentCommand();
     void scheduleNextCommand();
     void emitLog(const QString &message);
+    void setLastError(const QString &error);
     bool validateCommand(const MqttCommand &cmd);
 
-    QTimer *m_timer;
-    QQueue<MqttCommand> m_commandQueue;
-    QJsonObject m_presets;
+    // Preset format handling
+    bool isV2PresetFormat(const QJsonObject &json) const;
+    QJsonObject migrateV1ToV2(const QJsonObject &v1Json) const;
+    bool createBackupFile(const QString &filePath) const;
 };
 
 #endif // COMMANDQUEUE_H

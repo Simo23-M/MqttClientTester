@@ -1,4 +1,4 @@
-QT += core network mqtt qml quick quickcontrols2 widgets
+QT += core network qml mqtt quick quickcontrols2 widgets
 
 CONFIG += c++17
 

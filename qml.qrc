@@ -1,5 +1,28 @@
 <RCC>
     <qresource prefix="/">
-        <file>main.qml</file>
+        <file>qml/main.qml</file>
+        <!-- Components -->
+        <file>qml/components/qmldir</file>
+        <file>qml/components/StyledTextField.qml</file>
+        <file>qml/components/StyledButton.qml</file>
+        <file>qml/components/StyledGroupBox.qml</file>
+        <file>qml/components/FilePickerRow.qml</file>
+        <file>qml/components/MessageDelegate.qml</file>
+        <file>qml/components/LogDelegate.qml</file>
+        <file>qml/components/QosBadge.qml</file>
+        <file>qml/components/EmptyStateView.qml</file>
+        <file>qml/components/ToastNotification.qml</file>
+        <!-- Tabs -->
+        <file>qml/tabs/qmldir</file>
+        <file>qml/tabs/BrokerLogsTab.qml</file>
+        <file>qml/tabs/TopicsMessagesTab.qml</file>
+        <file>qml/tabs/TopicManagementTab.qml</file>
+        <file>qml/tabs/CommandQueueTab.qml</file>
+        <!-- Dialogs -->
+        <file>qml/dialogs/qmldir</file>
+        <file>qml/dialogs/MessageDetailDialog.qml</file>
+        <file>qml/dialogs/PresetDetailDialog.qml</file>
+        <file>qml/dialogs/JsonViewDialog.qml</file>
+        <file>qml/dialogs/TopicFilterHelpDialog.qml</file>
     </qresource>
 </RCC>

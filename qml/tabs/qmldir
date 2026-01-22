@@ -1,0 +1,5 @@
+module tabs
+BrokerLogsTab 1.0 BrokerLogsTab.qml
+TopicsMessagesTab 1.0 TopicsMessagesTab.qml
+TopicManagementTab 1.0 TopicManagementTab.qml
+CommandQueueTab 1.0 CommandQueueTab.qml

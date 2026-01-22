@@ -151,6 +151,16 @@ ApplicationWindow {
         }
     }
 
+    // Function to update queue list
+    function updateQueueList() {
+        queueListModel.clear()
+        var items = commandQueue.getQueueItems()
+        for (var i = 0; i < items.length; i++) {
+            queueListModel.append(items[i])
+        }
+    }
+
+
     // File dialogs
     FileDialog {
         id: caCertDialog
@@ -632,7 +642,7 @@ ApplicationWindow {
                                     onClicked: {
                                         mqttClient.publish(publishTopicField.text, publishMessageArea.text, publishQosSpinBox.value, retainCheckBox.checked)
                                         addToMqttTree(publishTopicField.text, publishMessageArea.text, false)
-                                        publishMessageArea.clear()
+                                        //publishMessageArea.clear()
                                     }
                                 }
                             }
@@ -1645,15 +1655,6 @@ ApplicationWindow {
                             }
                         }
                     }
-                }
-            }
-
-            // Function to update queue list
-            function updateQueueList() {
-                queueListModel.clear()
-                var items = commandQueue.getQueueItems()
-                for (var i = 0; i < items.length; i++) {
-                    queueListModel.append(items[i])
                 }
             }
 
