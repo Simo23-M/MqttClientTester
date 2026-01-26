@@ -30,6 +30,39 @@ ApplicationWindow {
     // Backend objects
     MqttClient {
         id: mqttClient
+
+        // Apply startup settings from command line or config file
+        Component.onCompleted: {
+            if (typeof startupHost !== "undefined" && startupHost !== "") {
+                hostName = startupHost
+            }
+            if (typeof startupPort !== "undefined" && startupPort > 0) {
+                port = startupPort
+            }
+            if (typeof startupClientId !== "undefined" && startupClientId !== "") {
+                clientId = startupClientId
+            }
+            if (typeof startupUsername !== "undefined" && startupUsername !== "") {
+                username = startupUsername
+            }
+            if (typeof startupPassword !== "undefined" && startupPassword !== "") {
+                password = startupPassword
+            }
+            if (typeof startupCaCertPath !== "undefined" && startupCaCertPath !== "") {
+                caCertPath = startupCaCertPath
+            }
+            if (typeof startupClientCertPath !== "undefined" && startupClientCertPath !== "") {
+                clientCertPath = startupClientCertPath
+            }
+            if (typeof startupClientKeyPath !== "undefined" && startupClientKeyPath !== "") {
+                clientKeyPath = startupClientKeyPath
+            }
+            // Auto-connect if requested
+            if (typeof startupAutoConnect !== "undefined" && startupAutoConnect) {
+                connectToHost()
+            }
+        }
+
         onLogMessage: function(message) {
             logModel.append({"message": message})
         }
@@ -108,6 +141,16 @@ ApplicationWindow {
         }
     }
 
+    function removeFromMqttTree(topic) {
+        for (var i = 0; i < mqttTreeModel.count; i++) {
+            if (mqttTreeModel.get(i).topic === topic) {
+                mqttTreeModel.remove(i)
+                return true
+            }
+        }
+        return false
+    }
+
     function updatePresetList() {
         presetListModel.clear()
         var presets = commandQueue.getPresetNames()
@@ -175,6 +218,7 @@ ApplicationWindow {
                 }
                 onDeleteRetainedRequested: function(topic) {
                     mqttClient.publish(topic, "", 0, true)
+                    removeFromMqttTree(topic)
                     toastNotification.show("Retained message deleted: " + topic, "success")
                 }
             }
@@ -235,6 +279,7 @@ ApplicationWindow {
         onDeleteRetainedRequested: function(topic) {
             // Send empty message with QoS 0 and retain flag to delete retained message
             mqttClient.publish(topic, "", 0, true)
+            removeFromMqttTree(topic)
             toastNotification.show("Retained message deleted: " + topic, "success")
         }
     }

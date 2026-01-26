@@ -45,31 +45,31 @@ public:
 
 public slots:
     // Preset management
-    bool loadPresetsFromFile(const QString &filePath);
-    bool savePresetsToFile(const QString &filePath);
+    Q_INVOKABLE bool loadPresetsFromFile(const QString &filePath);
+    Q_INVOKABLE bool savePresetsToFile(const QString &filePath);
     Q_INVOKABLE QString getPresetsJson() const;
 
     // Queue management - O(1) operations with QList
-    void addCommandToQueue(const QString &name, const QString &topic,
+    Q_INVOKABLE void addCommandToQueue(const QString &name, const QString &topic,
                            const QString &payload, int qos, bool retain, int delay);
-    void removeCommandFromQueue(int index);
-    void clearQueue();
-    void moveCommandUp(int index);
-    void moveCommandDown(int index);
+    Q_INVOKABLE void removeCommandFromQueue(int index);
+    Q_INVOKABLE void clearQueue();
+    Q_INVOKABLE void moveCommandUp(int index);
+    Q_INVOKABLE void moveCommandDown(int index);
 
     // Execution control
-    void startQueue();
-    void stopQueue();
-    void pauseQueue();
-    void resumeQueue();
-    void executeNext();
-    void executeCommand(int index);
+    Q_INVOKABLE void startQueue();
+    Q_INVOKABLE void stopQueue();
+    Q_INVOKABLE void pauseQueue();
+    Q_INVOKABLE void resumeQueue();
+    Q_INVOKABLE void executeNext();
+    Q_INVOKABLE void executeCommand(int index);
 
     // Preset operations
     Q_INVOKABLE QStringList getPresetNames() const;
     Q_INVOKABLE QString getPresetData(const QString &name) const;
-    void addPresetToQueue(const QString &presetName);
-    void clearPresets();
+    Q_INVOKABLE void addPresetToQueue(const QString &presetName);
+    Q_INVOKABLE void clearPresets();
 
     // Queue inspection - O(1) access
     Q_INVOKABLE QVariantList getQueueItems() const;
