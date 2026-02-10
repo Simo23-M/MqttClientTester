@@ -9,7 +9,7 @@ RowLayout {
     id: root
 
     property var mqttClient
-    property ListModel mqttTreeModel
+    property var mqttTreeModel
     property ListModel activeSubscriptionsModel
     property double scaleFactor: 1
     property string fontFamily: "Consolas, Monaco, monospace"
@@ -19,6 +19,9 @@ RowLayout {
     signal publishRequested(string topic, string message, int qos, bool retain)
     signal messageClicked(string topic, string message, string timestamp, var history)
     signal deleteRetainedRequested(string topic)
+    signal useAsPublishTopic(string topic)
+    signal useAsSubscribeTopic(string topic)
+    signal treeClearRequested()
 
     spacing: 10 * scaleFactor
 
@@ -178,21 +181,25 @@ RowLayout {
 
                 Button {
                     text: "Clear Tree"
-                    onClicked: root.mqttTreeModel.clear()
+                    onClicked: root.treeClearRequested()
                 }
             }
 
-            ScrollView {
+            ListView {
+                id: mqttTreeView
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 clip: true
+                model: root.mqttTreeModel
+                boundsBehavior: Flickable.StopAtBounds
 
-                ListView {
-                    id: mqttTreeView
-                    model: root.mqttTreeModel
+                ScrollBar.vertical: ScrollBar {
+                    policy: ScrollBar.AsNeeded
+                }
 
-                    delegate: MessageDelegate {
+                delegate: MessageDelegate {
                         topic: model.topic
+                        segment: model.segment || ""
                         message: model.message
                         timestamp: model.timestamp
                         received: model.received === true || model.received === "true"
@@ -201,23 +208,41 @@ RowLayout {
                         scaleFactor: root.scaleFactor
                         fontFamily: root.fontFamily
                         mqttConnected: root.mqttClient && root.mqttClient.connected
+                        level: model.level || 0
+                        expanded: model.expanded === true
+                        hasChildren: model.hasChildren === true
+                        hasMessage: model.hasMessage === true
+                        subtopicCount: model.subtopicCount || 0
+
+                        onToggleExpand: {
+                            root.mqttTreeModel.toggleExpanded(index)
+                        }
 
                         onClicked: {
-                            var history = []
-                            if (historyJson && historyJson !== "") {
-                                try {
-                                    history = JSON.parse(historyJson)
-                                } catch (e) {
-                                    history = []
+                            if (model.hasMessage) {
+                                var history = []
+                                if (historyJson && historyJson !== "") {
+                                    try {
+                                        history = JSON.parse(historyJson)
+                                    } catch (e) {
+                                        history = []
+                                    }
                                 }
+                                root.messageClicked(model.topic, model.message, model.timestamp, history)
                             }
-                            root.messageClicked(topic, message, timestamp, history)
                         }
 
                         onDeleteRetainedClicked: function(topicToDelete) {
                             root.deleteRetainedRequested(topicToDelete)
                         }
-                    }
+
+                        onUseAsPublishTopic: function(topic) {
+                            root.publishTopicField.text = topic
+                        }
+
+                        onUseAsSubscribeTopic: function(topic) {
+                            root.subscribeTopicField.text = topic
+                        }
                 }
             }
         }

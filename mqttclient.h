@@ -13,6 +13,8 @@
 #include <QQmlEngine>
 #include <QStringList>
 #include <QHash>
+#include <QVariantList>
+#include <QVariantMap>
 
 class MqttClient : public QObject
 {
@@ -83,6 +85,7 @@ signals:
     void connectedChanged();
     void stateChanged();
     void messageReceived(const QString &topic, const QString &message);
+    void messageBatchReceived(const QVariantList &messages);
     void errorOccurred(const QString &error);
     void logMessage(const QString &message);
     void subscriptionAdded(const QString &topic, int qos);
@@ -107,6 +110,7 @@ private slots:
     void onMessageReceived(QMqttMessage message);
     void onPingResponseReceived();
     void onSubscriptionStateChanged(QMqttSubscription::SubscriptionState state);
+    void flushMessageBuffer();
 
 private:
     void setupSslConfiguration();
@@ -139,6 +143,10 @@ private:
     bool m_autoReconnect;
     int m_reconnectInterval;
     
+    // Message batching
+    QTimer *m_batchTimer;
+    QVector<QPair<QString,QString>> m_messageBuffer;
+
     // Statistics
     quint64 m_messagesReceived;
     quint64 m_messagesPublished;

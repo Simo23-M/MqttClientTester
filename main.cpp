@@ -12,6 +12,7 @@
 #include "mqttclient.h"
 #include "applicationcontroller.h"
 #include "commandqueue.h"
+#include "mqtttreemodel.h"
 
 // Structure to hold connection settings from args/config
 struct ConnectionSettings {
@@ -148,6 +149,7 @@ int main(int argc, char *argv[])
     // Register QML types
     qmlRegisterType<MqttClient>("MqttClient", 1, 0, "MqttClient");
     qmlRegisterType<CommandQueue>("CommandQueue", 1, 0, "CommandQueue");
+    qmlRegisterType<MqttTreeModel>("MqttTreeModel", 1, 0, "MqttTreeModel");
     qmlRegisterSingletonType<ApplicationController>("AppController", 1, 0, "AppController",
                                                     applicationControllerProvider);
 

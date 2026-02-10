@@ -8,11 +8,13 @@ TEMPLATE = app
 SOURCES += \
     main.cpp \
     mqttclient.cpp \
+    mqtttreemodel.cpp \
     applicationcontroller.cpp \
     commandqueue.cpp
 
 HEADERS += \
     mqttclient.h \
+    mqtttreemodel.h \
     applicationcontroller.h \
     commandqueue.h
 

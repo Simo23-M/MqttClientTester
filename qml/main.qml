@@ -6,6 +6,7 @@ import QtQuick.Layouts 1.15
 import MqttClient 1.0
 import AppController 1.0
 import CommandQueue 1.0
+import MqttTreeModel 1.0
 import "components"
 import "tabs"
 import "dialogs"
@@ -17,6 +18,7 @@ ApplicationWindow {
     property string fontChosed: "Consolas, Monaco, monospace"
     property alias mqttClient: mqttClient
     property alias commandQueue: commandQueue
+    readonly property int maxLogEntries: 500
 
     width: 1200 * k
     height: 800 * k
@@ -65,12 +67,14 @@ ApplicationWindow {
 
         onLogMessage: function(message) {
             logModel.append({"message": message})
+            if (logModel.count > window.maxLogEntries)
+                logModel.remove(0, logModel.count - window.maxLogEntries)
         }
         onErrorOccurred: function(error) {
             toastNotification.show(error, "error")
         }
-        onMessageReceived: function(topic, message) {
-            addToMqttTree(topic, message, true)
+        onMessageBatchReceived: function(messages) {
+            mqttTreeModel.addMessageBatch(messages)
         }
     }
 
@@ -78,6 +82,8 @@ ApplicationWindow {
         id: commandQueue
         onLogMessage: function(message) {
             logModel.append({"message": message})
+            if (logModel.count > window.maxLogEntries)
+                logModel.remove(0, logModel.count - window.maxLogEntries)
         }
         onPublishRequested: function(topic, payload, qos, retain) {
             mqttClient.publish(topic, payload, qos, retain)
@@ -91,37 +97,12 @@ ApplicationWindow {
 
     // Models
     ListModel { id: logModel }
-    ListModel { id: mqttTreeModel }
+    MqttTreeModel { id: mqttTreeModel }
     ListModel { id: activeSubscriptionsModel }
     ListModel { id: presetListModel }
     ListModel { id: queueListModel }
 
     // Helper functions
-    function addToMqttTree(topic, message, received) {
-        var timestamp = new Date().toLocaleTimeString()
-        var existingIndex = -1
-        for (var i = 0; i < mqttTreeModel.count; i++) {
-            if (mqttTreeModel.get(i).topic === topic) {
-                existingIndex = i
-                break
-            }
-        }
-        if (existingIndex >= 0) {
-            var existingItem = mqttTreeModel.get(existingIndex)
-            var currentHistory = []
-            if (existingItem.historyJson && existingItem.historyJson !== "") {
-                try { currentHistory = JSON.parse(existingItem.historyJson) } catch (e) { currentHistory = [] }
-            }
-            currentHistory.push({"message": existingItem.message, "timestamp": existingItem.timestamp})
-            if (currentHistory.length > 20) currentHistory = currentHistory.slice(-20)
-            mqttTreeModel.setProperty(existingIndex, "message", message)
-            mqttTreeModel.setProperty(existingIndex, "timestamp", timestamp)
-            mqttTreeModel.setProperty(existingIndex, "historyJson", JSON.stringify(currentHistory))
-        } else {
-            mqttTreeModel.append({"topic": topic, "message": message, "timestamp": timestamp, "level": topic.split('/').length, "historyJson": "", "received": received})
-        }
-    }
-
     function addActiveSubscription(topic, qos) {
         for (var i = 0; i < activeSubscriptionsModel.count; i++) {
             if (activeSubscriptionsModel.get(i).topic === topic) {
@@ -139,16 +120,6 @@ ApplicationWindow {
                 break
             }
         }
-    }
-
-    function removeFromMqttTree(topic) {
-        for (var i = 0; i < mqttTreeModel.count; i++) {
-            if (mqttTreeModel.get(i).topic === topic) {
-                mqttTreeModel.remove(i)
-                return true
-            }
-        }
-        return false
     }
 
     function updatePresetList() {
@@ -207,7 +178,7 @@ ApplicationWindow {
                 }
                 onPublishRequested: function(topic, message, qos, retain) {
                     mqttClient.publish(topic, message, qos, retain)
-                    addToMqttTree(topic, message, false)
+                    mqttTreeModel.addMessage(topic, message, false)
                 }
                 onMessageClicked: function(topic, message, timestamp, history) {
                     messageDetailDialog.topic = topic
@@ -218,8 +189,11 @@ ApplicationWindow {
                 }
                 onDeleteRetainedRequested: function(topic) {
                     mqttClient.publish(topic, "", 0, true)
-                    removeFromMqttTree(topic)
+                    mqttTreeModel.removeByTopic(topic)
                     toastNotification.show("Retained message deleted: " + topic, "success")
+                }
+                onTreeClearRequested: {
+                    mqttTreeModel.clear()
                 }
             }
 
@@ -269,17 +243,11 @@ ApplicationWindow {
         fontFamily: window.fontChosed
         mqttConnected: mqttClient.connected
         onClearHistoryRequested: function(topic) {
-            for (var i = 0; i < mqttTreeModel.count; i++) {
-                if (mqttTreeModel.get(i).topic === topic) {
-                    mqttTreeModel.setProperty(i, "historyJson", "")
-                    break
-                }
-            }
+            mqttTreeModel.clearHistory(topic)
         }
         onDeleteRetainedRequested: function(topic) {
-            // Send empty message with QoS 0 and retain flag to delete retained message
             mqttClient.publish(topic, "", 0, true)
-            removeFromMqttTree(topic)
+            mqttTreeModel.removeByTopic(topic)
             toastNotification.show("Retained message deleted: " + topic, "success")
         }
     }

@@ -9,7 +9,7 @@ RowLayout {
 
     property var mqttClient
     property ListModel activeSubscriptionsModel
-    property ListModel mqttTreeModel
+    property var mqttTreeModel
     property double scaleFactor: 1
     property string fontFamily: "Consolas, Monaco, monospace"
 

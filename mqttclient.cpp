@@ -26,6 +26,12 @@ MqttClient::MqttClient(QObject *parent)
     connect(m_client, &QMqttClient::errorChanged, this, &MqttClient::onErrorChanged);
     connect(m_client, &QMqttClient::pingResponseReceived, this, &MqttClient::onPingResponseReceived);
     
+    // Setup message batch timer (flush every 100ms)
+    m_batchTimer = new QTimer(this);
+    m_batchTimer->setSingleShot(true);
+    m_batchTimer->setInterval(100);
+    connect(m_batchTimer, &QTimer::timeout, this, &MqttClient::flushMessageBuffer);
+
     // Setup reconnection timer
     m_reconnectTimer->setSingleShot(true);
     connect(m_reconnectTimer, &QTimer::timeout, [this]() {
@@ -161,6 +167,8 @@ void MqttClient::disconnectFromHost()
 {
     m_autoReconnect = false;
     m_reconnectTimer->stop();
+    m_batchTimer->stop();
+    flushMessageBuffer();
     
     if (m_client->state() == QMqttClient::Connected) {
         // Clear all subscriptions
@@ -446,17 +454,37 @@ void MqttClient::onErrorChanged(QMqttClient::ClientError error)
 void MqttClient::onMessageReceived(QMqttMessage message)
 {
     m_messagesReceived++;
+    QString topic = message.topic().name();
     QString messageText = QString::fromUtf8(message.payload());
-    
-    // Enhanced logging with message info
-    QString retainInfo = message.retain() ? " [RETAINED]" : "";
-    QString qosInfo = QString(" [QoS %1]").arg(message.qos());
-    
-    emitLogMessage(QString("?? Message received on [%1]%2%3: %4")
-                   .arg(message.topic().name(), qosInfo, retainInfo, 
-                        messageText.left(100))); // Limit preview to 100 chars
-    
-    emit messageReceived(message.topic().name(), messageText);
+
+    // Buffer the message for batch processing
+    m_messageBuffer.append(qMakePair(topic, messageText));
+
+    // Start the batch timer if not already running
+    if (!m_batchTimer->isActive()) {
+        m_batchTimer->start();
+    }
+}
+
+void MqttClient::flushMessageBuffer()
+{
+    if (m_messageBuffer.isEmpty())
+        return;
+
+    QVariantList batch;
+    batch.reserve(m_messageBuffer.size());
+    for (const auto &pair : std::as_const(m_messageBuffer)) {
+        QVariantMap entry;
+        entry[QStringLiteral("topic")] = pair.first;
+        entry[QStringLiteral("message")] = pair.second;
+        batch.append(entry);
+    }
+
+    int count = m_messageBuffer.size();
+    m_messageBuffer.clear();
+
+    emitLogMessage(QString("Batch received: %1 messages").arg(count));
+    emit messageBatchReceived(batch);
 }
 
 void MqttClient::onPingResponseReceived()
