@@ -65,8 +65,8 @@ ApplicationWindow {
             }
         }
 
-        onLogMessage: function(message) {
-            logModel.append({"message": message})
+        onLogMessage: function(entry) {
+            logModel.append(entry)
             if (logModel.count > window.maxLogEntries)
                 logModel.remove(0, logModel.count - window.maxLogEntries)
         }
@@ -80,8 +80,8 @@ ApplicationWindow {
 
     CommandQueue {
         id: commandQueue
-        onLogMessage: function(message) {
-            logModel.append({"message": message})
+        onLogMessage: function(entry) {
+            logModel.append(entry)
             if (logModel.count > window.maxLogEntries)
                 logModel.remove(0, logModel.count - window.maxLogEntries)
         }
@@ -90,7 +90,12 @@ ApplicationWindow {
         }
         onQueueFinished: toastNotification.show("Queue execution completed", "success")
         onErrorOccurred: function(error) {
-            logModel.append({"message": "[ERROR] " + error})
+            logModel.append({
+                "timestamp": new Date().toLocaleTimeString(Qt.locale(), "hh:mm:ss.zzz"),
+                "category": "error", "level": "error",
+                "message": error, "topic": "", "payload": "",
+                "direction": "", "qos": -1
+            })
             toastNotification.show(error, "error")
         }
     }

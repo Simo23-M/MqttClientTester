@@ -2,6 +2,7 @@ import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Controls.Material 2.15
 import QtQuick.Layouts 1.15
+import "../utils/PayloadFormatter.js" as Formatter
 
 Popup {
     id: root
@@ -13,6 +14,17 @@ Popup {
     property double scaleFactor: 1
     property string fontFamily: "Consolas, Monaco, monospace"
     property bool mqttConnected: false
+    property string detectedFormat: root.message ? Formatter.detectFormat(root.message) : "raw"
+    property bool showFormatted: true
+    property string displayMessage: {
+        if (!root.message) return ""
+        if (showFormatted && detectedFormat !== "raw") {
+            var result = Formatter.beautify(root.message, detectedFormat)
+            if (typeof result === "object" && result.error) return root.message
+            return result
+        }
+        return root.message
+    }
 
     signal clearHistoryRequested(string topic)
     signal deleteRetainedRequested(string topic)
@@ -115,10 +127,42 @@ Popup {
         }
 
         // Current message section
-        Label {
-            text: "Current Message (Last received: " + root.timestamp + "):"
-            font.bold: true
-            color: Material.foreground
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: 8 * root.scaleFactor
+
+            Label {
+                text: "Current Message (Last received: " + root.timestamp + "):"
+                font.bold: true
+                color: Material.foreground
+                Layout.fillWidth: true
+            }
+
+            Rectangle {
+                visible: root.detectedFormat !== "raw"
+                color: root.detectedFormat === "json" ? Material.color(Material.Teal) : Material.color(Material.Purple)
+                radius: 3
+                implicitWidth: detailFormatBadgeText.implicitWidth + 10
+                implicitHeight: detailFormatBadgeText.implicitHeight + 6
+
+                Text {
+                    id: detailFormatBadgeText
+                    anchors.centerIn: parent
+                    text: root.detectedFormat.toUpperCase()
+                    color: "white"
+                    font.pixelSize: 10
+                    font.bold: true
+                }
+            }
+
+            Button {
+                visible: root.detectedFormat !== "raw"
+                text: root.showFormatted ? "Raw" : "Format"
+                flat: true
+                font.pixelSize: 11
+                implicitHeight: 28 * root.scaleFactor
+                onClicked: root.showFormatted = !root.showFormatted
+            }
         }
 
         Rectangle {
@@ -137,7 +181,7 @@ Popup {
                 ScrollBar.vertical.policy: ScrollBar.AsNeeded
 
                 TextArea {
-                    text: root.message
+                    text: root.displayMessage
                     readOnly: true
                     wrapMode: TextArea.Wrap
                     selectByMouse: true
@@ -243,7 +287,17 @@ Popup {
 
                                 TextArea {
                                     id: historyMessageText
-                                    text: modelData.message || ""
+                                    text: {
+                                        var msg = modelData.message || ""
+                                        if (root.showFormatted && msg.length > 0) {
+                                            var fmt = Formatter.detectFormat(msg)
+                                            if (fmt !== "raw") {
+                                                var result = Formatter.beautify(msg, fmt)
+                                                if (typeof result !== "object") return result
+                                            }
+                                        }
+                                        return msg
+                                    }
                                     readOnly: true
                                     wrapMode: TextArea.Wrap
                                     selectByMouse: true

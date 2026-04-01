@@ -1,5 +1,6 @@
 #include "applicationcontroller.h"
 #include <QFileInfo>
+#include <QFile>
 #include <QDebug>
 
 ApplicationController::ApplicationController(QObject *parent)
@@ -26,4 +27,15 @@ QString ApplicationController::urlToLocalFile(const QUrl &url)
 QUrl ApplicationController::localFileToUrl(const QString &filePath)
 {
     return QUrl::fromLocalFile(filePath);
+}
+
+bool ApplicationController::saveTextToFile(const QString &filePath, const QString &content)
+{
+    QFile file(filePath);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        return false;
+    }
+    file.write(content.toUtf8());
+    file.close();
+    return true;
 }

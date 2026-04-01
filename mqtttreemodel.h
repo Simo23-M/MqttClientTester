@@ -22,6 +22,7 @@ struct TreeNode {
     QJsonArray history;
     bool hasMessage = false;
     bool expanded = false;
+    quint64 updateTick = 0;
 
     TreeNode *parent = nullptr;
     QMap<QString, TreeNode*> children; // sorted alphabetically
@@ -50,7 +51,8 @@ public:
         ExpandedRole,
         HasChildrenRole,
         HasMessageRole,
-        SubtopicCountRole
+        SubtopicCountRole,
+        UpdateTickRole
     };
 
     explicit MqttTreeModel(QObject *parent = nullptr);
@@ -91,6 +93,7 @@ private:
     QHash<QString, TreeNode*> m_topicNodeMap; // full topic -> leaf node (nodes with messages)
     int m_maxTopics = 10000;
     int m_messageNodeCount = 0; // nodes with hasMessage == true
+    quint64 m_globalTick = 0;
     static const int MAX_HISTORY = 20;
 };
 

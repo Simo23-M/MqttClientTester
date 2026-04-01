@@ -20,6 +20,7 @@ public slots:
     QString getHomePath();
     QString urlToLocalFile(const QUrl &url);
     QUrl localFileToUrl(const QString &filePath);
+    Q_INVOKABLE bool saveTextToFile(const QString &filePath, const QString &content);
 
 signals:
     void fileSelected(const QString &filePath);

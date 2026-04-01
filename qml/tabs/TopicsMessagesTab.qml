@@ -4,6 +4,7 @@ import QtQuick.Controls.Material 2.15
 import QtQuick.Layouts 1.15
 import "../components"
 import "../dialogs"
+import "../utils/PayloadFormatter.js" as Formatter
 
 RowLayout {
     id: root
@@ -135,6 +136,44 @@ RowLayout {
                     }
 
                     Label { text: "Message:" }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8 * root.scaleFactor
+
+                        ComboBox {
+                            id: formatSelector
+                            model: ["Raw", "JSON", "XML"]
+                            Layout.preferredWidth: 100 * root.scaleFactor
+                        }
+
+                        Button {
+                            text: "Beautify"
+                            Material.background: Material.Teal
+                            enabled: formatSelector.currentText !== "Raw" && publishMessageArea.text.length > 0
+                            onClicked: {
+                                var fmt = formatSelector.currentText.toLowerCase()
+                                var result = Formatter.beautify(publishMessageArea.text, fmt)
+                                if (result && typeof result === "object" && result.error) {
+                                    validationLabel.text = "Error: " + result.error
+                                    validationLabel.color = Material.color(Material.Red)
+                                } else {
+                                    publishMessageArea.text = result
+                                    validationLabel.text = "Formatted"
+                                    validationLabel.color = Material.color(Material.Green)
+                                }
+                            }
+                        }
+
+                        Label {
+                            id: validationLabel
+                            text: ""
+                            font.pixelSize: 11
+                            Layout.fillWidth: true
+                            elide: Text.ElideRight
+                        }
+                    }
+
                     ScrollView {
                         Layout.fillWidth: true
                         Layout.preferredHeight: 150 * root.scaleFactor
@@ -142,6 +181,19 @@ RowLayout {
                             id: publishMessageArea
                             placeholderText: "Enter message to publish..."
                             wrapMode: TextArea.Wrap
+                            onTextChanged: {
+                                if (formatSelector.currentText === "JSON" && text.length > 0) {
+                                    var result = Formatter.validateJson(text)
+                                    validationLabel.text = result.message
+                                    validationLabel.color = result.valid ? Material.color(Material.Green) : Material.color(Material.Red)
+                                } else if (formatSelector.currentText === "XML" && text.length > 0) {
+                                    var xmlResult = Formatter.validateXml(text)
+                                    validationLabel.text = xmlResult.message
+                                    validationLabel.color = xmlResult.valid ? Material.color(Material.Green) : Material.color(Material.Red)
+                                } else {
+                                    validationLabel.text = ""
+                                }
+                            }
                         }
                     }
 
@@ -213,6 +265,7 @@ RowLayout {
                         hasChildren: model.hasChildren === true
                         hasMessage: model.hasMessage === true
                         subtopicCount: model.subtopicCount || 0
+                        updateTick: model.updateTick || 0
 
                         onToggleExpand: {
                             root.mqttTreeModel.toggleExpanded(index)

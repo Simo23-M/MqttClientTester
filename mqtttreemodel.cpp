@@ -60,6 +60,8 @@ QVariant MqttTreeModel::data(const QModelIndex &index, int role) const
         return node->hasMessage;
     case SubtopicCountRole:
         return node->subtopicCount;
+    case UpdateTickRole:
+        return QVariant::fromValue(node->updateTick);
     default:
         return QVariant();
     }
@@ -78,7 +80,8 @@ QHash<int, QByteArray> MqttTreeModel::roleNames() const
         {ExpandedRole, "expanded"},
         {HasChildrenRole, "hasChildren"},
         {HasMessageRole, "hasMessage"},
-        {SubtopicCountRole, "subtopicCount"}
+        {SubtopicCountRole, "subtopicCount"},
+        {UpdateTickRole, "updateTick"}
     };
 }
 
@@ -241,6 +244,7 @@ void MqttTreeModel::addMessageBatch(const QVariantList &messages)
             node->message = message;
             node->timestamp = timestamp;
             node->received = true;
+            node->updateTick = ++m_globalTick;
 
             // Find row in flat list for dataChanged
             int row = m_flatList.indexOf(node);
@@ -253,6 +257,7 @@ void MqttTreeModel::addMessageBatch(const QVariantList &messages)
             node->timestamp = timestamp;
             node->received = true;
             node->hasMessage = true;
+            node->updateTick = ++m_globalTick;
             m_topicNodeMap.insert(topic, node);
             m_messageNodeCount++;
             updateSubtopicCounts(node, 1);
@@ -279,7 +284,7 @@ void MqttTreeModel::addMessageBatch(const QVariantList &messages)
             emit dataChanged(
                 createIndex(row, 0),
                 createIndex(row, 0),
-                {MessageRole, TimestampRole, HistoryJsonRole}
+                {MessageRole, TimestampRole, HistoryJsonRole, UpdateTickRole}
             );
         }
     }
@@ -305,13 +310,14 @@ void MqttTreeModel::addMessage(const QString &topic, const QString &message, boo
         node->message = message;
         node->timestamp = timestamp;
         node->received = received;
+        node->updateTick = ++m_globalTick;
 
         int row = m_flatList.indexOf(node);
         if (row >= 0) {
             emit dataChanged(
                 createIndex(row, 0),
                 createIndex(row, 0),
-                {MessageRole, TimestampRole, ReceivedRole, HistoryJsonRole}
+                {MessageRole, TimestampRole, ReceivedRole, HistoryJsonRole, UpdateTickRole}
             );
         }
     } else {
@@ -325,6 +331,7 @@ void MqttTreeModel::addMessage(const QString &topic, const QString &message, boo
         node->timestamp = timestamp;
         node->received = received;
         node->hasMessage = true;
+        node->updateTick = ++m_globalTick;
         m_topicNodeMap.insert(topic, node);
         m_messageNodeCount++;
         updateSubtopicCounts(node, 1);

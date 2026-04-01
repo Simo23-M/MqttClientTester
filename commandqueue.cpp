@@ -90,7 +90,7 @@ bool CommandQueue::loadPresetsFromFile(const QString &filePath)
     QFile file(filePath);
     if (!file.open(QIODevice::ReadOnly)) {
         setLastError(QString("Cannot open preset file: %1").arg(filePath));
-        emitLog(QString("❌ Failed to open preset file: %1").arg(filePath));
+        emitStructuredLog(QString("Failed to open preset file: %1").arg(filePath), "error");
         emit errorOccurred("Cannot open preset file");
         return false;
     }
@@ -103,14 +103,14 @@ bool CommandQueue::loadPresetsFromFile(const QString &filePath)
 
     if (parseError.error != QJsonParseError::NoError) {
         setLastError(QString("JSON parse error: %1").arg(parseError.errorString()));
-        emitLog(QString("❌ JSON parse error: %1").arg(parseError.errorString()));
+        emitStructuredLog(QString("JSON parse error: %1").arg(parseError.errorString()), "error");
         emit errorOccurred("Invalid JSON format");
         return false;
     }
 
     if (!doc.isObject()) {
         setLastError("JSON root must be an object");
-        emitLog("❌ JSON root must be an object");
+        emitStructuredLog("JSON root must be an object", "error");
         emit errorOccurred("Invalid JSON structure");
         return false;
     }
@@ -120,7 +120,7 @@ bool CommandQueue::loadPresetsFromFile(const QString &filePath)
     // Check format version and migrate if needed
     if (isV2PresetFormat(rootObj)) {
         m_presetVersion = rootObj.value("version").toInt();
-        emitLog(QString("📄 Loaded v%1 preset format").arg(m_presetVersion));
+        emitLog(QString("Loaded v%1 preset format").arg(m_presetVersion));
 
         // Convert v2 format to internal representation
         QJsonArray presetsArray = rootObj.value("presets").toArray();
@@ -146,11 +146,11 @@ bool CommandQueue::loadPresetsFromFile(const QString &filePath)
         }
     } else {
         // v1 format - migrate automatically
-        emitLog("📄 Detected v1 preset format, migrating to v2...");
+        emitLog("Detected v1 preset format, migrating to v2...");
 
         // Create backup before migration
         if (createBackupFile(filePath)) {
-            emitLog(QString("💾 Created backup: %1.bak").arg(filePath));
+            emitLog(QString("Created backup: %1.bak").arg(filePath));
         }
 
         // Migrate to v2
@@ -162,7 +162,7 @@ bool CommandQueue::loadPresetsFromFile(const QString &filePath)
             QJsonDocument outDoc(v2Json);
             outFile.write(outDoc.toJson(QJsonDocument::Indented));
             outFile.close();
-            emitLog("✅ Migrated preset file to v2 format");
+            emitLog("Migrated preset file to v2 format");
         }
 
         // Load the migrated presets
@@ -173,7 +173,7 @@ bool CommandQueue::loadPresetsFromFile(const QString &filePath)
     m_loadedPresetFile = filePath;
     emit loadedPresetFileChanged();
 
-    emitLog(QString("✅ Loaded %1 presets from: %2")
+    emitLog(QString("Loaded %1 presets from: %2")
                 .arg(m_presets.keys().size()).arg(filePath));
 
     return true;
@@ -184,7 +184,7 @@ bool CommandQueue::savePresetsToFile(const QString &filePath)
     QFile file(filePath);
     if (!file.open(QIODevice::WriteOnly)) {
         setLastError(QString("Cannot create preset file: %1").arg(filePath));
-        emitLog(QString("❌ Failed to create preset file: %1").arg(filePath));
+        emitStructuredLog(QString("Failed to create preset file: %1").arg(filePath), "error");
         emit errorOccurred("Cannot create preset file");
         return false;
     }
@@ -198,7 +198,7 @@ bool CommandQueue::savePresetsToFile(const QString &filePath)
     m_loadedPresetFile = filePath;
     emit loadedPresetFileChanged();
 
-    emitLog(QString("💾 Saved %1 presets to: %2 (v2 format)")
+    emitLog(QString("Saved %1 presets to: %2 (v2 format)")
                 .arg(m_presets.keys().size()).arg(filePath));
 
     return true;
@@ -222,20 +222,20 @@ void CommandQueue::addCommandToQueue(const QString &name, const QString &topic,
     cmd.delay = delay;
 
     if (!validateCommand(cmd)) {
-        emitLog(QString("❌ Invalid command: %1").arg(name));
+        emitStructuredLog(QString("Invalid command: %1").arg(name), "error");
         return;
     }
 
     m_commandList.append(cmd);  // O(1) amortized
     emit queueSizeChanged();
 
-    emitLog(QString("➕ Added to queue: %1 [Topic: %2]").arg(name, topic));
+    emitLog(QString("Added to queue: %1 [Topic: %2]").arg(name, topic));
 }
 
 void CommandQueue::removeCommandFromQueue(int index)
 {
     if (index < 0 || index >= m_commandList.size()) {
-        emitLog("❌ Invalid queue index");
+        emitStructuredLog("Invalid queue index", "error");
         return;
     }
 
@@ -243,7 +243,7 @@ void CommandQueue::removeCommandFromQueue(int index)
     m_commandList.removeAt(index);  // O(n) in worst case, but much better than previous implementation
 
     emit queueSizeChanged();
-    emitLog(QString("➖ Removed from queue: %1").arg(name));
+    emitLog(QString("Removed from queue: %1").arg(name));
 }
 
 void CommandQueue::clearQueue()
@@ -255,7 +255,7 @@ void CommandQueue::clearQueue()
     emit queueSizeChanged();
     emit currentIndexChanged();
 
-    emitLog(QString("🗑️  Queue cleared (%1 commands removed)").arg(count));
+    emitLog(QString("Queue cleared (%1 commands removed)").arg(count));
 }
 
 void CommandQueue::moveCommandUp(int index)
@@ -267,7 +267,7 @@ void CommandQueue::moveCommandUp(int index)
     // O(1) swap operation
     m_commandList.swapItemsAt(index - 1, index);
 
-    emitLog(QString("⬆️  Moved command up: %1").arg(m_commandList[index - 1].name));
+    emitLog(QString("Moved command up: %1").arg(m_commandList[index - 1].name));
 }
 
 void CommandQueue::moveCommandDown(int index)
@@ -279,20 +279,20 @@ void CommandQueue::moveCommandDown(int index)
     // O(1) swap operation
     m_commandList.swapItemsAt(index, index + 1);
 
-    emitLog(QString("⬇️  Moved command down: %1").arg(m_commandList[index + 1].name));
+    emitLog(QString("Moved command down: %1").arg(m_commandList[index + 1].name));
 }
 
 void CommandQueue::startQueue()
 {
     if (m_commandList.isEmpty()) {
         setLastError("Cannot start: queue is empty");
-        emitLog("❌ Cannot start: queue is empty");
+        emitStructuredLog("Cannot start: queue is empty", "error");
         emit errorOccurred("Queue is empty");
         return;
     }
 
     if (m_isRunning) {
-        emitLog("⚠️  Queue is already running");
+        emitStructuredLog("Queue is already running", "warning");
         return;
     }
 
@@ -303,7 +303,7 @@ void CommandQueue::startQueue()
     emit isRunningChanged();
     emit currentIndexChanged();
 
-    emitLog(QString("▶️  Starting queue execution (%1 commands)").arg(m_commandList.size()));
+    emitLog(QString("Starting queue execution (%1 commands)").arg(m_commandList.size()));
 
     executeCurrentCommand();
 }
@@ -322,7 +322,7 @@ void CommandQueue::stopQueue()
     emit isRunningChanged();
     emit currentIndexChanged();
 
-    emitLog("⏹️  Queue execution stopped");
+    emitLog("Queue execution stopped");
 }
 
 void CommandQueue::pauseQueue()
@@ -334,7 +334,7 @@ void CommandQueue::pauseQueue()
     m_timer->stop();
     m_isPaused = true;
 
-    emitLog("⏸️  Queue execution paused");
+    emitLog("Queue execution paused");
 }
 
 void CommandQueue::resumeQueue()
@@ -344,7 +344,7 @@ void CommandQueue::resumeQueue()
     }
 
     m_isPaused = false;
-    emitLog("▶️  Queue execution resumed");
+    emitLog("Queue execution resumed");
 
     scheduleNextCommand();
 }
@@ -368,14 +368,14 @@ void CommandQueue::executeNext()
 void CommandQueue::executeCommand(int index)
 {
     if (index < 0 || index >= m_commandList.size()) {
-        emitLog("❌ Invalid command index");
+        emitStructuredLog("Invalid command index", "error");
         return;
     }
 
     // O(1) direct access
     const MqttCommand &cmd = m_commandList[index];
 
-    emitLog(QString("🎯 Executing command: %1").arg(cmd.name));
+    emitStructuredLog(QString("Executing command: %1").arg(cmd.name), "info", cmd.topic, cmd.payload, "out", cmd.qos);
     emit publishRequested(cmd.topic, cmd.payload, cmd.qos, cmd.retain);
     emit commandExecuted(cmd.name, cmd.topic, cmd.payload);
 }
@@ -398,7 +398,7 @@ QString CommandQueue::getPresetData(const QString &name) const
 void CommandQueue::addPresetToQueue(const QString &presetName)
 {
     if (!m_presets.contains(presetName)) {
-        emitLog(QString("❌ Preset not found: %1").arg(presetName));
+        emitStructuredLog(QString("Preset not found: %1").arg(presetName), "error");
         return;
     }
 
@@ -415,14 +415,14 @@ void CommandQueue::addPresetToQueue(const QString &presetName)
     cmd.description = preset.value("description").toString();
 
     if (!validateCommand(cmd)) {
-        emitLog(QString("❌ Invalid preset configuration: %1").arg(presetName));
+        emitStructuredLog(QString("Invalid preset configuration: %1").arg(presetName), "error");
         return;
     }
 
     m_commandList.append(cmd);  // O(1) amortized
     emit queueSizeChanged();
 
-    emitLog(QString("➕ Added preset to queue: %1").arg(presetName));
+    emitLog(QString("Added preset to queue: %1").arg(presetName));
 }
 
 void CommandQueue::clearPresets()
@@ -433,7 +433,7 @@ void CommandQueue::clearPresets()
 
     emit loadedPresetFileChanged();
 
-    emitLog(QString("🗑️  Cleared %1 presets").arg(count));
+    emitLog(QString("Cleared %1 presets").arg(count));
 }
 
 QVariantList CommandQueue::getQueueItems() const
@@ -493,7 +493,7 @@ void CommandQueue::onTimerTimeout()
         emit currentIndexChanged();
         emit queueFinished();
 
-        emitLog("✅ Queue execution completed");
+        emitLog("Queue execution completed");
         return;
     }
 
@@ -509,10 +509,10 @@ void CommandQueue::executeCurrentCommand()
     // O(1) direct access
     const MqttCommand &cmd = m_commandList[m_currentIndex];
 
-    emitLog(QString("🚀 Executing [%1/%2]: %3")
+    emitStructuredLog(QString("Executing [%1/%2]: %3")
                 .arg(m_currentIndex + 1)
                 .arg(m_commandList.size())
-                .arg(cmd.name));
+                .arg(cmd.name), "info", cmd.topic, cmd.payload, "out", cmd.qos);
 
     emit publishRequested(cmd.topic, cmd.payload, cmd.qos, cmd.retain);
     emit commandExecuted(cmd.name, cmd.topic, cmd.payload);
@@ -531,14 +531,29 @@ void CommandQueue::scheduleNextCommand()
 
     int delay = cmd.delay > 0 ? cmd.delay : 1000; // Default 1 second
 
-    emitLog(QString("⏱️  Next command in %1ms").arg(delay));
+    emitLog(QString("Next command in %1ms").arg(delay));
     m_timer->start(delay);
 }
 
 void CommandQueue::emitLog(const QString &message)
 {
-    QString timestamp = QDateTime::currentDateTime().toString("hh:mm:ss");
-    emit logMessage(QString("[%1] %2").arg(timestamp, message));
+    emitStructuredLog(message, "info");
+}
+
+void CommandQueue::emitStructuredLog(const QString &message, const QString &level,
+                                       const QString &topic, const QString &payload,
+                                       const QString &direction, int qos)
+{
+    QVariantMap entry;
+    entry[QStringLiteral("timestamp")] = QDateTime::currentDateTime().toString(QStringLiteral("hh:mm:ss.zzz"));
+    entry[QStringLiteral("category")] = QStringLiteral("queue");
+    entry[QStringLiteral("level")] = level;
+    entry[QStringLiteral("message")] = message;
+    entry[QStringLiteral("topic")] = topic;
+    entry[QStringLiteral("payload")] = payload.left(200);
+    entry[QStringLiteral("direction")] = direction;
+    entry[QStringLiteral("qos")] = qos;
+    emit logMessage(entry);
 }
 
 void CommandQueue::setLastError(const QString &error)
@@ -552,17 +567,17 @@ void CommandQueue::setLastError(const QString &error)
 bool CommandQueue::validateCommand(const MqttCommand &cmd)
 {
     if (cmd.topic.isEmpty()) {
-        emitLog("❌ Command validation failed: empty topic");
+        emitStructuredLog("Command validation failed: empty topic", "error");
         return false;
     }
 
     if (cmd.topic.contains('+') || cmd.topic.contains('#')) {
-        emitLog("❌ Command validation failed: wildcards not allowed in publish topics");
+        emitStructuredLog("Command validation failed: wildcards not allowed in publish topics", "error");
         return false;
     }
 
     if ((cmd.qos < 0) || (cmd.qos > 2)) {
-        emitLog(QString("❌ Command validation failed: invalid QoS (%1)").arg(cmd.qos));
+        emitStructuredLog(QString("Command validation failed: invalid QoS (%1)").arg(cmd.qos), "error");
         return false;
     }
 

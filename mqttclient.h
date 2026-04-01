@@ -87,7 +87,7 @@ signals:
     void messageReceived(const QString &topic, const QString &message);
     void messageBatchReceived(const QVariantList &messages);
     void errorOccurred(const QString &error);
-    void logMessage(const QString &message);
+    void logMessage(const QVariantMap &entry);
     void subscriptionAdded(const QString &topic, int qos);
     void subscriptionRemoved(const QString &topic);
     void activeSubscriptionsChanged();
@@ -117,6 +117,10 @@ private:
     void setupConnectionProperties();
     void loadCertificates();
     void emitLogMessage(const QString &message);
+    void emitStructuredLog(const QString &message, const QString &category,
+                           const QString &level, const QString &topic = QString(),
+                           const QString &payload = QString(), const QString &direction = QString(),
+                           int qos = -1);
     void addActiveSubscription(const QString &topic, int qos);
     void removeActiveSubscription(const QString &topic);
     

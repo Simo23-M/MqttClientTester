@@ -43,6 +43,8 @@ qt_add_resources(mqtt_tls_client_qml "qml"
         qml/dialogs/PresetDetailDialog.qml
         qml/dialogs/JsonViewDialog.qml
         qml/dialogs/TopicFilterHelpDialog.qml
+        # Utils
+        qml/utils/PayloadFormatter.js
 )
 
 target_link_libraries(mqtt_tls_client_qml PRIVATE

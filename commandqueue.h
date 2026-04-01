@@ -7,6 +7,7 @@
 #include <QTimer>
 #include <QList>
 #include <QQmlEngine>
+#include <QVariantMap>
 
 
 struct MqttCommand {
@@ -84,7 +85,7 @@ signals:
     void commandExecuted(const QString &name, const QString &topic, const QString &payload);
     void queueFinished();
     void errorOccurred(const QString &error);
-    void logMessage(const QString &message);
+    void logMessage(const QVariantMap &entry);
     void publishRequested(const QString &topic, const QString &payload, int qos, bool retain);
 
 
@@ -107,6 +108,9 @@ private:
     void executeCurrentCommand();
     void scheduleNextCommand();
     void emitLog(const QString &message);
+    void emitStructuredLog(const QString &message, const QString &level,
+                           const QString &topic = QString(), const QString &payload = QString(),
+                           const QString &direction = QString(), int qos = -1);
     void setLastError(const QString &error);
     bool validateCommand(const MqttCommand &cmd);
 

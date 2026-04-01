@@ -2,6 +2,7 @@ import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Controls.Material 2.15
 import QtQuick.Layouts 1.15
+import "../utils/PayloadFormatter.js" as Formatter
 
 Rectangle {
     id: root
@@ -21,6 +22,54 @@ Rectangle {
     property bool hasChildren: false
     property bool hasMessage: false
     property int subtopicCount: 0
+    property var updateTick: 0
+
+    // History navigation
+    property var parsedHistory: {
+        if (!historyJson || historyJson === "") return []
+        try { return JSON.parse(historyJson) } catch(e) { return [] }
+    }
+    property int historyCount: parsedHistory.length
+    property int historyViewIndex: 0  // 0 = latest (current message), 1+ = history items
+
+    property string displayedMessage: {
+        if (historyViewIndex === 0) return root.message
+        var idx = historyViewIndex - 1
+        if (idx >= 0 && idx < parsedHistory.length) {
+            return parsedHistory[parsedHistory.length - 1 - idx].message || ""
+        }
+        return root.message
+    }
+    property string displayedTimestamp: {
+        if (historyViewIndex === 0) return root.timestamp
+        var idx = historyViewIndex - 1
+        if (idx >= 0 && idx < parsedHistory.length) {
+            return parsedHistory[parsedHistory.length - 1 - idx].timestamp || ""
+        }
+        return root.timestamp
+    }
+
+    property string detectedFormat: displayedMessage ? Formatter.detectFormat(displayedMessage) : "raw"
+    property string formattedMessage: {
+        if (!displayedMessage) return ""
+        if (detectedFormat === "json") {
+            var result = Formatter.beautifyJson(displayedMessage)
+            if (typeof result === "object" && result.error) return displayedMessage
+            return result
+        }
+        return displayedMessage
+    }
+
+    onMessageChanged: historyViewIndex = 0
+
+    property bool _initialized: false
+    Component.onCompleted: _initialized = true
+
+    onUpdateTickChanged: {
+        if (_initialized && updateTick > 0) {
+            flashAnimation.restart()
+        }
+    }
 
     signal clicked()
     signal deleteRetainedClicked(string topic)
@@ -30,7 +79,7 @@ Rectangle {
 
     width: parent ? parent.width : 200
     height: root.hasMessage
-            ? Math.max(topicText.implicitHeight + messageText.implicitHeight + 20 * scaleFactor, 60 * scaleFactor)
+            ? Math.max(topicText.implicitHeight + messageText.implicitHeight + (root.historyCount > 0 ? 28 * scaleFactor : 0) + 20 * scaleFactor, 60 * scaleFactor)
             : 32 * scaleFactor
     color: itemIndex % 2 === 0 ? Material.background : Qt.darker(Material.background, 1.1)
     border.color: root.hasMessage
@@ -110,8 +159,44 @@ Rectangle {
                     }
                 }
 
+                // Format badge
+                Rectangle {
+                    visible: root.hasMessage && root.detectedFormat !== "raw"
+                    color: root.detectedFormat === "json" ? Material.color(Material.Teal) : Material.color(Material.Purple)
+                    radius: 3
+                    implicitWidth: formatBadgeText.implicitWidth + 8
+                    implicitHeight: formatBadgeText.implicitHeight + 4
+
+                    Text {
+                        id: formatBadgeText
+                        anchors.centerIn: parent
+                        text: root.detectedFormat.toUpperCase()
+                        color: "white"
+                        font.pixelSize: 9
+                        font.bold: true
+                    }
+                }
+
+                // History count badge
+                Rectangle {
+                    visible: root.hasMessage && root.historyCount > 0
+                    color: Material.color(Material.DeepOrange)
+                    radius: width / 2
+                    implicitWidth: Math.max(historyCountText.implicitWidth + 6, 18)
+                    implicitHeight: 18
+
+                    Text {
+                        id: historyCountText
+                        anchors.centerIn: parent
+                        text: root.historyCount
+                        color: "white"
+                        font.pixelSize: 9
+                        font.bold: true
+                    }
+                }
+
                 Text {
-                    text: root.timestamp
+                    text: root.displayedTimestamp
                     color: Material.foreground
                     font.pixelSize: 10
                     opacity: 0.7
@@ -122,7 +207,7 @@ Rectangle {
             // Message preview - only for nodes with messages
             Text {
                 id: messageText
-                text: root.message
+                text: root.formattedMessage
                 color: Material.foreground
                 font.family: root.fontFamily
                 font.pixelSize: 11
@@ -131,6 +216,42 @@ Rectangle {
                 maximumLineCount: 2
                 elide: Text.ElideRight
                 visible: root.hasMessage
+            }
+
+            // History navigation row
+            RowLayout {
+                Layout.fillWidth: true
+                visible: root.hasMessage && root.historyCount > 0
+                spacing: 4 * root.scaleFactor
+
+                Button {
+                    text: "\u25C0"
+                    flat: true
+                    font.pixelSize: 10
+                    implicitWidth: 24 * root.scaleFactor
+                    implicitHeight: 20 * root.scaleFactor
+                    enabled: root.historyViewIndex < root.historyCount
+                    onClicked: root.historyViewIndex++
+                }
+
+                Text {
+                    text: root.historyViewIndex === 0 ? "latest" : ("-%1 of %2".arg(root.historyViewIndex).arg(root.historyCount + 1))
+                    color: Material.foreground
+                    font.pixelSize: 9
+                    opacity: 0.7
+                    Layout.fillWidth: true
+                    horizontalAlignment: Text.AlignHCenter
+                }
+
+                Button {
+                    text: "\u25B6"
+                    flat: true
+                    font.pixelSize: 10
+                    implicitWidth: 24 * root.scaleFactor
+                    implicitHeight: 20 * root.scaleFactor
+                    enabled: root.historyViewIndex > 0
+                    onClicked: root.historyViewIndex--
+                }
             }
         }
 
@@ -166,6 +287,22 @@ Rectangle {
                     root.clicked()
                 }
             }
+        }
+    }
+
+    // Flash overlay for new message highlight
+    Rectangle {
+        id: flashOverlay
+        anchors.fill: parent
+        color: Material.color(Material.Amber)
+        opacity: 0
+        z: 10
+        radius: 0
+
+        SequentialAnimation {
+            id: flashAnimation
+            NumberAnimation { target: flashOverlay; property: "opacity"; from: 0; to: 0.4; duration: 100 }
+            NumberAnimation { target: flashOverlay; property: "opacity"; from: 0.4; to: 0; duration: 400 }
         }
     }
 

@@ -36,7 +36,8 @@ MqttClient::MqttClient(QObject *parent)
     m_reconnectTimer->setSingleShot(true);
     connect(m_reconnectTimer, &QTimer::timeout, [this]() {
         if (m_autoReconnect && m_client->state() == QMqttClient::Disconnected) {
-            emitLogMessage("Attempting to reconnect to MQTT broker...");
+            emitStructuredLog("Attempting to reconnect to MQTT broker...", "connection", "info");
+            m_client->setCleanSession(true);
             m_client->connectToHost();
         }
     });
@@ -45,7 +46,7 @@ MqttClient::MqttClient(QObject *parent)
     setupSslConfiguration();
     setupConnectionProperties();
     
-    emitLogMessage("MQTT Client initialized");
+    emitStructuredLog("MQTT Client initialized", "system", "info");
 }
 
 MqttClient::~MqttClient()
@@ -142,7 +143,7 @@ void MqttClient::connectToHost()
 {
     QString finalClientId = m_clientId.isEmpty() ? QUuid::createUuid().toString() : m_clientId;
     
-    emitLogMessage(QString("Connecting to MQTT broker: %1:%2").arg(m_hostName).arg(m_port));
+    emitStructuredLog(QString("Connecting to MQTT broker: %1:%2").arg(m_hostName).arg(m_port), "connection", "info");
     
     m_client->setHostname(m_hostName);
     m_client->setPort(static_cast<quint16>(m_port));
@@ -182,7 +183,7 @@ void MqttClient::disconnectFromHost()
         emit activeSubscriptionsChanged();
         
         m_client->disconnectFromHost();
-        emitLogMessage("Disconnecting from broker");
+        emitStructuredLog("Disconnecting from broker", "connection", "info");
     }
 }
 
@@ -191,13 +192,13 @@ void MqttClient::subscribe(const QString &topic, int qos)
     if (m_client->state() == QMqttClient::Connected) {
         // Validate topic filter
         if (!isValidTopicFilter(topic)) {
-            emitLogMessage(QString("? Invalid topic filter: %1").arg(topic));
+            emitStructuredLog(QString("Invalid topic filter: %1").arg(topic), "subscription", "error", topic);
             return;
         }
-        
+
         // Check if already subscribed
         if (m_activeSubscriptions.contains(topic)) {
-            emitLogMessage(QString("?? Already subscribed to: %1").arg(topic));
+            emitStructuredLog(QString("Already subscribed to: %1").arg(topic), "subscription", "warning", topic);
             return;
         }
         
@@ -213,13 +214,13 @@ void MqttClient::subscribe(const QString &topic, int qos)
             QString typeInfo = isWildcardTopic(topic) ? 
                 QString(" (Wildcard - Traffic Level: %1)").arg(estimateTrafficLevel(topic)) : "";
             
-            emitLogMessage(QString("?? Subscribed to topic: %1%2").arg(topic, typeInfo));
+            emitStructuredLog(QString("Subscribed to topic: %1%2").arg(topic, typeInfo), "subscription", "info", topic, QString(), "in", qos);
             emit subscriptionAdded(topic, qos);
         } else {
-            emitLogMessage(QString("? Failed to subscribe to topic: %1").arg(topic));
+            emitStructuredLog(QString("Failed to subscribe to topic: %1").arg(topic), "subscription", "error", topic);
         }
     } else {
-        emitLogMessage("? Cannot subscribe: client not connected");
+        emitStructuredLog("Cannot subscribe: client not connected", "subscription", "error");
     }
 }
 
@@ -233,10 +234,10 @@ void MqttClient::unsubscribe(const QString &topic)
             }
             removeActiveSubscription(topic);
             m_client->unsubscribe(topic);
-            emitLogMessage(QString("??? Unsubscribed from topic: %1").arg(topic));
+            emitStructuredLog(QString("Unsubscribed from topic: %1").arg(topic), "subscription", "info", topic);
             emit subscriptionRemoved(topic);
         } else {
-            emitLogMessage("Cannot unsubscribe: client not connected");
+            emitStructuredLog("Cannot unsubscribe: client not connected", "subscription", "error");
         }
     }
 }
@@ -249,9 +250,9 @@ void MqttClient::unsubscribeAll()
         for (const QString &topic : topics) {
             unsubscribe(topic);
         }
-        emitLogMessage(QString("??? Unsubscribed from all %1 topics").arg(topics.size()));
+        emitStructuredLog(QString("Unsubscribed from all %1 topics").arg(topics.size()), "subscription", "info");
     } else {
-        emitLogMessage("? Cannot unsubscribe: client not connected");
+        emitStructuredLog("Cannot unsubscribe: client not connected", "subscription", "error");
     }
 }
 
@@ -260,7 +261,7 @@ void MqttClient::publish(const QString &topic, const QString &message, int qos, 
     if (m_client->state() == QMqttClient::Connected) {
         // Validate topic (publishing topics cannot contain wildcards)
         if (topic.contains('+') || topic.contains('#')) {
-            emitLogMessage(QString("? Cannot publish to wildcard topic: %1").arg(topic));
+            emitStructuredLog(QString("Cannot publish to wildcard topic: %1").arg(topic), "publish", "error", topic);
             return;
         }
         
@@ -269,12 +270,12 @@ void MqttClient::publish(const QString &topic, const QString &message, int qos, 
         if (result != -1) {
             m_messagesPublished++;
             QString retainInfo = retain ? " [RETAINED]" : "";
-            emitLogMessage(QString("?? Published message to topic: %1%2").arg(topic, retainInfo));
+            emitStructuredLog(QString("Published message to topic: %1%2").arg(topic, retainInfo), "publish", "info", topic, message, "out", qos);
         } else {
-            emitLogMessage(QString("? Failed to publish message to topic: %1").arg(topic));
+            emitStructuredLog(QString("Failed to publish message to topic: %1").arg(topic), "publish", "error", topic);
         }
     } else {
-        emitLogMessage("? Cannot publish: client not connected");
+        emitStructuredLog("Cannot publish: client not connected", "publish", "error");
     }
 }
 
@@ -378,9 +379,9 @@ int MqttClient::estimateTrafficLevel(const QString &topic) const
 
 void MqttClient::onConnected()
 {
-    emitLogMessage("? Connected to MQTT broker");
-    emitLogMessage(QString("?? Statistics: %1 messages received, %2 published")
-                   .arg(m_messagesReceived).arg(m_messagesPublished));
+    emitStructuredLog("Connected to MQTT broker", "connection", "info");
+    emitStructuredLog(QString("Statistics: %1 messages received, %2 published")
+                   .arg(m_messagesReceived).arg(m_messagesPublished), "system", "debug");
     m_reconnectTimer->stop();
     emit connected();
     emit connectedChanged();
@@ -388,7 +389,7 @@ void MqttClient::onConnected()
 
 void MqttClient::onDisconnected()
 {
-    emitLogMessage("? Disconnected from MQTT broker");
+    emitStructuredLog("Disconnected from MQTT broker", "connection", "warning");
     
     // Clear subscriptions but keep the list for potential reconnection
     for (auto it = m_activeSubscriptions.begin(); it != m_activeSubscriptions.end(); ++it) {
@@ -409,7 +410,7 @@ void MqttClient::onDisconnected()
 void MqttClient::onStateChanged(QMqttClient::ClientState state)
 {
     Q_UNUSED(state);
-    emitLogMessage(QString("?? State changed: %1").arg(connectionStateString()));
+    emitStructuredLog(QString("State changed: %1").arg(connectionStateString()), "connection", "info");
     emit stateChanged();
     emit connectedChanged();
 }
@@ -447,7 +448,7 @@ void MqttClient::onErrorChanged(QMqttClient::ClientError error)
         break;
     }
     
-    emitLogMessage(QString("? Error: %1").arg(errorString));
+    emitStructuredLog(QString("Error: %1").arg(errorString), "error", "error");
     emit errorOccurred(errorString);
 }
 
@@ -483,13 +484,21 @@ void MqttClient::flushMessageBuffer()
     int count = m_messageBuffer.size();
     m_messageBuffer.clear();
 
-    emitLogMessage(QString("Batch received: %1 messages").arg(count));
+    for (const QVariant &v : std::as_const(batch)) {
+        const QVariantMap &m = v.toMap();
+        emitStructuredLog(QString("Message received on: %1").arg(m.value(QStringLiteral("topic")).toString()),
+                          "receive", "info",
+                          m.value(QStringLiteral("topic")).toString().simplified(),
+                          m.value(QStringLiteral("message")).toString().simplified(),
+                          "in");
+    }
+    emitStructuredLog(QString("Batch received: %1 messages").arg(count), "receive", "debug", QString(), QString(), "in");
     emit messageBatchReceived(batch);
 }
 
 void MqttClient::onPingResponseReceived()
 {
-    emitLogMessage("?? Ping response received");
+    emitStructuredLog("Ping response received", "connection", "debug");
 }
 
 void MqttClient::onSubscriptionStateChanged(QMqttSubscription::SubscriptionState state)
@@ -502,18 +511,21 @@ void MqttClient::onSubscriptionStateChanged(QMqttSubscription::SubscriptionState
     QString topic = subscription->topic().filter();
     
     switch (state) {
+    case QMqttSubscription::UnsubscriptionPending:
+        emitStructuredLog(QString("Subscription state: %1 - Pending").arg(topic), "subscription", "info", topic);
+        break;
     case QMqttSubscription::Unsubscribed:
-        emitLogMessage(QString("??? Subscription state: %1 - Unsubscribed").arg(topic));
+        emitStructuredLog(QString("Subscription state: %1 - Unsubscribed").arg(topic), "subscription", "info", topic);
         removeActiveSubscription(topic);
         break;
     case QMqttSubscription::SubscriptionPending:
-        emitLogMessage(QString("??? Subscription state: %1 - Pending").arg(topic));
+        emitStructuredLog(QString("Subscription state: %1 - Pending").arg(topic), "subscription", "info", topic);
         break;
     case QMqttSubscription::Subscribed:
-        emitLogMessage(QString("??? Subscription state: %1 - Active").arg(topic));
+        emitStructuredLog(QString("Subscription state: %1 - Active").arg(topic), "subscription", "info", topic);
         break;
     case QMqttSubscription::Error:
-        emitLogMessage(QString("??? Subscription state: %1 - Error").arg(topic));
+        emitStructuredLog(QString("Subscription state: %1 - Error").arg(topic), "subscription", "error", topic);
         removeActiveSubscription(topic);
         break;
     }
@@ -527,9 +539,9 @@ void MqttClient::setupSslConfiguration()
 
     // Debug SSL information
     if (!QSslSocket::supportsSsl()) {
-        emitLogMessage("? SSL not supported on this system");
-        emitLogMessage(QString("SSL build version: %1").arg(QSslSocket::sslLibraryBuildVersionString()));
-        emitLogMessage(QString("SSL runtime version: %1").arg(QSslSocket::sslLibraryVersionString()));
+        emitStructuredLog("SSL not supported on this system", "tls", "error");
+        emitStructuredLog(QString("SSL build version: %1").arg(QSslSocket::sslLibraryBuildVersionString()), "tls", "debug");
+        emitStructuredLog(QString("SSL runtime version: %1").arg(QSslSocket::sslLibraryVersionString()), "tls", "debug");
         return;
     }
 
@@ -545,8 +557,8 @@ void MqttClient::setupSslConfiguration()
         }
     }
 
-    emitLogMessage(QString("?? SSL Info: Using %1 secure ciphers out of %2 total")
-                       .arg(secureCiphers.size()).arg(allCiphers.size()));
+    emitStructuredLog(QString("SSL Info: Using %1 secure ciphers out of %2 total")
+                       .arg(secureCiphers.size()).arg(allCiphers.size()), "tls", "info");
 
     m_sslConfig.setCiphers(secureCiphers.isEmpty() ? allCiphers : secureCiphers);
 }
@@ -567,13 +579,13 @@ void MqttClient::loadCertificates()
             QList<QSslCertificate> caCerts = QSslCertificate::fromDevice(&certFile);
             if (!caCerts.isEmpty()) {
                 m_sslConfig.setCaCertificates(caCerts);
-                emitLogMessage("?? CA certificate loaded successfully");
+                emitStructuredLog("CA certificate loaded successfully", "tls", "info");
             } else {
-                emitLogMessage(QString("? Failed to load CA certificate from: %1").arg(m_caCertPath));
+                emitStructuredLog(QString("Failed to load CA certificate from: %1").arg(m_caCertPath), "tls", "error");
             }
             certFile.close();
         } else {
-            emitLogMessage(QString("? Could not open CA certificate file: %1").arg(m_caCertPath));
+            emitStructuredLog(QString("Could not open CA certificate file: %1").arg(m_caCertPath), "tls", "error");
         }
     }
     
@@ -585,13 +597,13 @@ void MqttClient::loadCertificates()
             QSslCertificate cert(&certFile);
             if (!cert.isNull()) {
                 m_sslConfig.setLocalCertificate(cert);
-                emitLogMessage("?? Client certificate loaded successfully");
+                emitStructuredLog("Client certificate loaded successfully", "tls", "info");
             } else {
-                emitLogMessage(QString("? Failed to load client certificate from: %1").arg(m_clientCertPath));
+                emitStructuredLog(QString("Failed to load client certificate from: %1").arg(m_clientCertPath), "tls", "error");
             }
             certFile.close();
         } else {
-            emitLogMessage(QString("? Could not open client certificate file: %1").arg(m_clientCertPath));
+            emitStructuredLog(QString("Could not open client certificate file: %1").arg(m_clientCertPath), "tls", "error");
         }
         
         // Load private key
@@ -609,21 +621,37 @@ void MqttClient::loadCertificates()
             
             if (!key.isNull()) {
                 m_sslConfig.setPrivateKey(key);
-                emitLogMessage("?? Private key loaded successfully");
+                emitStructuredLog("Private key loaded successfully", "tls", "info");
             } else {
-                emitLogMessage(QString("? Failed to load private key from: %1").arg(m_clientKeyPath));
+                emitStructuredLog(QString("Failed to load private key from: %1").arg(m_clientKeyPath), "tls", "error");
             }
             keyFile.close();
         } else {
-            emitLogMessage(QString("? Could not open private key file: %1").arg(m_clientKeyPath));
+            emitStructuredLog(QString("Could not open private key file: %1").arg(m_clientKeyPath), "tls", "error");
         }
     }
 }
 
 void MqttClient::emitLogMessage(const QString &message)
 {
-    QString timestamp = QDateTime::currentDateTime().toString("hh:mm:ss");
-    emit logMessage(QString("[%1] %2").arg(timestamp, message));
+    emitStructuredLog(message, "system", "info");
+}
+
+void MqttClient::emitStructuredLog(const QString &message, const QString &category,
+                                     const QString &level, const QString &topic,
+                                     const QString &payload, const QString &direction,
+                                     int qos)
+{
+    QVariantMap entry;
+    entry[QStringLiteral("timestamp")] = QDateTime::currentDateTime().toString(QStringLiteral("hh:mm:ss.zzz"));
+    entry[QStringLiteral("category")] = category;
+    entry[QStringLiteral("level")] = level;
+    entry[QStringLiteral("message")] = message;
+    entry[QStringLiteral("topic")] = topic;
+    entry[QStringLiteral("payload")] = payload.left(200);
+    entry[QStringLiteral("direction")] = direction;
+    entry[QStringLiteral("qos")] = qos;
+    emit logMessage(entry);
 }
 
 void MqttClient::addActiveSubscription(const QString &topic, int qos)

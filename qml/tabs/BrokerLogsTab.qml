@@ -210,6 +210,54 @@ RowLayout {
         }
     }
 
+    // Export file dialog
+    FileDialog {
+        id: exportLogDialog
+        title: "Export Logs"
+        fileMode: FileDialog.SaveFile
+        nameFilters: ["CSV Files (*.csv)", "JSON Files (*.json)", "All Files (*)"]
+        folder: root.appController.localFileToUrl(root.appController.getDocumentsPath())
+        onAccepted: {
+            var filePath = root.appController.urlToLocalFile(file)
+            var isJson = filePath.endsWith(".json")
+            var content = ""
+
+            if (isJson) {
+                var arr = []
+                for (var i = 0; i < root.logModel.count; i++) {
+                    var item = root.logModel.get(i)
+                    arr.push({
+                        timestamp: item.timestamp || "",
+                        category: item.category || "",
+                        level: item.level || "",
+                        message: item.message || "",
+                        topic: item.topic || "",
+                        payload: item.payload || "",
+                        direction: item.direction || "",
+                        qos: item.qos !== undefined ? item.qos : -1
+                    })
+                }
+                content = JSON.stringify(arr, null, 2)
+            } else {
+                content = "timestamp,category,level,direction,topic,qos,message\n"
+                for (var j = 0; j < root.logModel.count; j++) {
+                    var row = root.logModel.get(j)
+                    var msg = (row.message || "").replace(/"/g, '""')
+                    var tp = (row.topic || "").replace(/"/g, '""')
+                    content += '"' + (row.timestamp || "") + '",'
+                    content += '"' + (row.category || "") + '",'
+                    content += '"' + (row.level || "") + '",'
+                    content += '"' + (row.direction || "") + '",'
+                    content += '"' + tp + '",'
+                    content += (row.qos !== undefined ? row.qos : -1) + ','
+                    content += '"' + msg + '"\n'
+                }
+            }
+
+            root.appController.saveTextToFile(filePath, content)
+        }
+    }
+
     // Right panel - Activity Log
     GroupBox {
         title: "Activity Log"
@@ -222,28 +270,81 @@ RowLayout {
 
             RowLayout {
                 Layout.fillWidth: true
+                spacing: 8 * root.scaleFactor
+
+                Label { text: "Category:"; font.pixelSize: 11 }
+                ComboBox {
+                    id: categoryFilter
+                    model: ["All", "connection", "subscription", "publish", "receive", "tls", "error", "system", "queue"]
+                    Layout.preferredWidth: 130 * root.scaleFactor
+                }
+
+                Label { text: "Level:" ; font.pixelSize: 11 }
+                ComboBox {
+                    id: levelFilter
+                    model: ["All", "info", "warning", "error", "debug"]
+                    Layout.preferredWidth: 100 * root.scaleFactor
+                }
+
                 Item { Layout.fillWidth: true }
+
+                CheckBox {
+                    id: verboseToggle
+                    text: "Verbose"
+                    font.pixelSize: 11
+                }
+
+                Button {
+                    text: "Export"
+                    onClicked: exportLogDialog.open()
+                    enabled: root.logModel.count > 0
+                }
+
                 Button {
                     text: "Clear Log"
                     onClicked: root.logModel.clear()
                 }
             }
 
-            ScrollView {
+            ListView {
+                id: logView
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 clip: true
+                model: root.logModel
+                boundsBehavior: Flickable.StopAtBounds
 
-                ListView {
-                    id: logView
-                    model: root.logModel
+                ScrollBar.vertical: ScrollBar {
+                    policy: ScrollBar.AsNeeded
+                }
 
-                    delegate: LogDelegate {
-                        message: model.message
-                        itemIndex: index
-                        scaleFactor: root.scaleFactor
-                        fontFamily: root.fontFamily
+                // Auto-scroll to bottom on new entries
+                onCountChanged: {
+                    if (atYEnd || contentHeight <= height) {
+                        Qt.callLater(function() { logView.positionViewAtEnd() })
                     }
+                }
+
+                delegate: LogDelegate {
+                    timestamp: model.timestamp || ""
+                    category: model.category || ""
+                    level: model.level || ""
+                    message: model.message || ""
+                    topic: model.topic || ""
+                    payload: model.payload || ""
+                    direction: model.direction || ""
+                    qos: model.qos !== undefined ? model.qos : -1
+                    itemIndex: index
+                    verbose: verboseToggle.checked
+                    scaleFactor: root.scaleFactor
+                    fontFamily: root.fontFamily
+
+                    visible: {
+                        var catOk = categoryFilter.currentText === "All" || (model.category || "") === categoryFilter.currentText
+                        var lvlOk = levelFilter.currentText === "All" || (model.level || "") === levelFilter.currentText
+                        return catOk && lvlOk
+                    }
+                    height: visible ? implicitHeight : 0
                 }
             }
         }
