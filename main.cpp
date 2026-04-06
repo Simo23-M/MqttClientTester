@@ -1,4 +1,5 @@
 #include <QGuiApplication>
+#include <QIcon>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickStyle>
@@ -81,6 +82,7 @@ int main(int argc, char *argv[])
 
     // Set application properties
     app.setApplicationName("MQTT TLS Client QML");
+    app.setWindowIcon(QIcon(":/AppIcon.png"));
     app.setApplicationVersion("1.0.0");
     app.setOrganizationName("Simone");
     app.setOrganizationDomain("simone dev");
