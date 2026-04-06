@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Controls.Material 2.15
@@ -13,6 +14,8 @@ RowLayout {
     property ListModel logModel
     property double scaleFactor: 1
     property string fontFamily: "Consolas, Monaco, monospace"
+    property bool autoScroll: autoScrollCheckbox.checked
+    property int maxLogEntries: maxEntriesSpinBox.value
 
     spacing: 10 * scaleFactor
 
@@ -24,7 +27,7 @@ RowLayout {
         folder: root.appController.localFileToUrl(root.appController.getDocumentsPath())
         onAccepted: {
             var filePath = root.appController.urlToLocalFile(file)
-            caCertField.text = filePath
+            root.caCertField.text = filePath
             root.mqttClient.caCertPath = filePath
         }
     }
@@ -36,7 +39,7 @@ RowLayout {
         folder: root.appController.localFileToUrl(root.appController.getDocumentsPath())
         onAccepted: {
             var filePath = root.appController.urlToLocalFile(file)
-            clientCertField.text = filePath
+            root.clientCertField.text = filePath
             root.mqttClient.clientCertPath = filePath
         }
     }
@@ -48,7 +51,7 @@ RowLayout {
         folder: root.appController.localFileToUrl(root.appController.getDocumentsPath())
         onAccepted: {
             var filePath = root.appController.urlToLocalFile(file)
-            clientKeyField.text = filePath
+            root.clientKeyField.text = filePath
             root.mqttClient.clientKeyPath = filePath
         }
     }
@@ -206,6 +209,76 @@ RowLayout {
                 }
             }
 
+            // Log Settings
+            GroupBox {
+                title: "Log Settings"
+                Layout.fillWidth: true
+                Material.elevation: 2
+
+                ColumnLayout {
+                    anchors.fill: parent
+                    spacing: 8
+
+                    GridLayout {
+                        columns: 2
+                        Layout.fillWidth: true
+
+                        Label { text: "Category:" }
+                        ComboBox {
+                            id: categoryFilter
+                            model: ["All", "connection", "subscription", "publish", "receive", "tls", "error", "system", "queue"]
+                            Layout.fillWidth: true
+                        }
+
+                        Label { text: "Level:" }
+                        ComboBox {
+                            id: levelFilter
+                            model: ["All", "info", "warning", "error", "debug"]
+                            Layout.fillWidth: true
+                        }
+
+                        Label { text: "Max entries:" }
+                        SpinBox {
+                            id: maxEntriesSpinBox
+                            from: 50
+                            to: 10000
+                            stepSize: 50
+                            value: 500
+                            editable: true
+                            Layout.fillWidth: true
+                        }
+                    }
+
+                    CheckBox {
+                        id: verboseToggle
+                        text: "Verbose"
+                    }
+
+                    CheckBox {
+                        id: autoScrollCheckbox
+                        text: "Auto-scroll"
+                        checked: true
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+
+                        Button {
+                            text: "Export"
+                            Layout.fillWidth: true
+                            onClicked: exportLogDialog.open()
+                            enabled: root.logModel.count > 0
+                        }
+
+                        Button {
+                            text: "Clear Log"
+                            Layout.fillWidth: true
+                            onClicked: root.logModel.clear()
+                        }
+                    }
+                }
+            }
+
             Item { Layout.fillHeight: true }
         }
     }
@@ -268,44 +341,6 @@ RowLayout {
         ColumnLayout {
             anchors.fill: parent
 
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 8 * root.scaleFactor
-
-                Label { text: "Category:"; font.pixelSize: 11 }
-                ComboBox {
-                    id: categoryFilter
-                    model: ["All", "connection", "subscription", "publish", "receive", "tls", "error", "system", "queue"]
-                    Layout.preferredWidth: 130 * root.scaleFactor
-                }
-
-                Label { text: "Level:" ; font.pixelSize: 11 }
-                ComboBox {
-                    id: levelFilter
-                    model: ["All", "info", "warning", "error", "debug"]
-                    Layout.preferredWidth: 100 * root.scaleFactor
-                }
-
-                Item { Layout.fillWidth: true }
-
-                CheckBox {
-                    id: verboseToggle
-                    text: "Verbose"
-                    font.pixelSize: 11
-                }
-
-                Button {
-                    text: "Export"
-                    onClicked: exportLogDialog.open()
-                    enabled: root.logModel.count > 0
-                }
-
-                Button {
-                    text: "Clear Log"
-                    onClicked: root.logModel.clear()
-                }
-            }
-
             ListView {
                 id: logView
                 Layout.fillWidth: true
@@ -320,12 +355,15 @@ RowLayout {
 
                 // Auto-scroll to bottom on new entries
                 onCountChanged: {
-                    if (atYEnd || contentHeight <= height) {
+                    if (autoScrollCheckbox.checked && (atYEnd || contentHeight <= height)) {
                         Qt.callLater(function() { logView.positionViewAtEnd() })
                     }
                 }
 
                 delegate: LogDelegate {
+                    required property var model
+                    required property int index
+
                     timestamp: model.timestamp || ""
                     category: model.category || ""
                     level: model.level || ""

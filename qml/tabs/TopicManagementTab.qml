@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Controls.Material 2.15
@@ -262,9 +263,13 @@ RowLayout {
                     model: root.activeSubscriptionsModel
 
                     delegate: Rectangle {
+                        id: subDelegate
+                        required property var model
+                        required property int index
+
                         width: activeSubscriptionsView.width
                         height: 60 * root.scaleFactor
-                        color: index % 2 === 0 ? Material.background : Qt.darker(Material.background, 1.1)
+                        color: subDelegate.index % 2 === 0 ? Material.background : Qt.darker(Material.background, 1.1)
                         border.color: Material.accent
                         border.width: 1
 
@@ -281,7 +286,7 @@ RowLayout {
                                     Layout.fillWidth: true
 
                                     Text {
-                                        text: model.topic
+                                        text: subDelegate.model.topic
                                         color: Material.accent
                                         font.family: root.fontFamily
                                         font.pixelSize: 12
@@ -291,7 +296,7 @@ RowLayout {
                                     }
 
                                     QosBadge {
-                                        qos: model.qos
+                                        qos: subDelegate.model.qos
                                         scaleFactor: root.scaleFactor
                                     }
                                 }
@@ -300,7 +305,7 @@ RowLayout {
                                     Layout.fillWidth: true
 
                                     Text {
-                                        text: "Subscribed at: " + model.timestamp
+                                        text: "Subscribed at: " + subDelegate.model.timestamp
                                         color: Material.foreground
                                         font.pixelSize: 10
                                         opacity: 0.7
@@ -315,8 +320,8 @@ RowLayout {
                                         implicitHeight: 25 * root.scaleFactor
                                         implicitWidth: 80 * root.scaleFactor
                                         onClicked: {
-                                            root.mqttClient.unsubscribe(model.topic)
-                                            root.activeSubscriptionsModel.remove(index)
+                                            root.mqttClient.unsubscribe(subDelegate.model.topic)
+                                            root.activeSubscriptionsModel.remove(subDelegate.index)
                                         }
                                     }
                                 }
@@ -328,7 +333,7 @@ RowLayout {
                             width: 4 * root.scaleFactor
                             height: parent.height
                             anchors.left: parent.left
-                            color: model.topic.includes('+') || model.topic.includes('#') ?
+                            color: subDelegate.model.topic.includes('+') || subDelegate.model.topic.includes('#') ?
                                    Material.color(Material.Purple) : Material.color(Material.Blue)
                         }
                     }

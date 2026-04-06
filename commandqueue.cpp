@@ -7,6 +7,7 @@
 #include <QDebug>
 #include <QFileInfo>
 #include <QDir>
+#include <QProcessEnvironment>
 
 CommandQueue::CommandQueue(QObject *parent)
     : QObject(parent)
@@ -130,17 +131,12 @@ bool CommandQueue::loadPresetsFromFile(const QString &filePath)
             QJsonObject preset = presetVal.toObject();
             QString name = preset.value("name").toString();
 
-            // For now, take the first command from the commands array
             QJsonArray commands = preset.value("commands").toArray();
             if (!commands.isEmpty()) {
-                QJsonObject cmd = commands.first().toObject();
+                // Store all commands in the preset, not just the first
                 QJsonObject internalPreset;
-                internalPreset["topic"] = cmd.value("topic").toString();
-                internalPreset["payload"] = cmd.value("payload").toString();
-                internalPreset["qos"] = cmd.value("qos").toInt(0);
-                internalPreset["retain"] = cmd.value("retain").toBool(false);
-                internalPreset["delay"] = cmd.value("delay").toInt(1000);
                 internalPreset["description"] = preset.value("description").toString();
+                internalPreset["commands"] = commands;
                 m_presets[name] = internalPreset;
             }
         }
@@ -189,8 +185,25 @@ bool CommandQueue::savePresetsToFile(const QString &filePath)
         return false;
     }
 
-    // Always save in v2 format
-    QJsonObject v2Json = migrateV1ToV2(m_presets);
+    // Save in v2 format
+    QJsonObject v2Json;
+    v2Json["version"] = 2;
+    QJsonObject metadata;
+    metadata["name"] = "Preset Collection";
+    metadata["created"] = QDateTime::currentDateTime().toString(Qt::ISODate);
+    v2Json["metadata"] = metadata;
+
+    QJsonArray presetsArray;
+    for (const QString &key : m_presets.keys()) {
+        QJsonObject internalPreset = m_presets.value(key).toObject();
+        QJsonObject presetOut;
+        presetOut["name"] = key;
+        presetOut["description"] = internalPreset.value("description").toString();
+        presetOut["commands"] = internalPreset.value("commands").toArray();
+        presetsArray.append(presetOut);
+    }
+    v2Json["presets"] = presetsArray;
+
     QJsonDocument doc(v2Json);
     file.write(doc.toJson(QJsonDocument::Indented));
     file.close();
@@ -206,7 +219,19 @@ bool CommandQueue::savePresetsToFile(const QString &filePath)
 
 QString CommandQueue::getPresetsJson() const
 {
-    QJsonDocument doc(m_presets);
+    QJsonObject v2Json;
+    v2Json["version"] = 2;
+    QJsonArray presetsArray;
+    for (const QString &key : m_presets.keys()) {
+        QJsonObject internalPreset = m_presets.value(key).toObject();
+        QJsonObject presetOut;
+        presetOut["name"] = key;
+        presetOut["description"] = internalPreset.value("description").toString();
+        presetOut["commands"] = internalPreset.value("commands").toArray();
+        presetsArray.append(presetOut);
+    }
+    v2Json["presets"] = presetsArray;
+    QJsonDocument doc(v2Json);
     return QString::fromUtf8(doc.toJson(QJsonDocument::Indented));
 }
 
@@ -220,6 +245,7 @@ void CommandQueue::addCommandToQueue(const QString &name, const QString &topic,
     cmd.qos = qos;
     cmd.retain = retain;
     cmd.delay = delay;
+    cmd.commandType = CommandType::Publish;
 
     if (!validateCommand(cmd)) {
         emitStructuredLog(QString("Invalid command: %1").arg(name), "error");
@@ -230,6 +256,36 @@ void CommandQueue::addCommandToQueue(const QString &name, const QString &topic,
     emit queueSizeChanged();
 
     emitLog(QString("Added to queue: %1 [Topic: %2]").arg(name, topic));
+}
+
+void CommandQueue::addScriptToQueue(const QString &name, const QString &scriptPath,
+                                    const QString &scriptArgs, int delay)
+{
+    MqttCommand cmd;
+    cmd.name = name.isEmpty() ? scriptPath.split('/').last() : name;
+    cmd.scriptPath = scriptPath;
+    cmd.scriptArgs = scriptArgs;
+    cmd.delay = delay;
+    cmd.commandType = CommandType::Script;
+
+    if (!validateCommand(cmd)) {
+        emitStructuredLog(QString("Invalid script command: %1").arg(name), "error");
+        return;
+    }
+
+    m_commandList.append(cmd);
+    emit queueSizeChanged();
+
+    emitLog(QString("Added script to queue: %1 [%2]").arg(cmd.name, scriptPath));
+}
+
+void CommandQueue::executeScriptNow(const QString &scriptPath, const QString &scriptArgs)
+{
+    if (scriptPath.isEmpty()) {
+        emitStructuredLog("executeScriptNow: empty script path", "error");
+        return;
+    }
+    startProcess("immediate", scriptPath, scriptArgs, false);
 }
 
 void CommandQueue::removeCommandFromQueue(int index)
@@ -315,6 +371,13 @@ void CommandQueue::stopQueue()
     }
 
     m_timer->stop();
+
+    if (m_currentProcess) {
+        m_currentProcess->kill();
+        m_currentProcess->deleteLater();
+        m_currentProcess = nullptr;
+    }
+
     m_isRunning = false;
     m_isPaused = false;
     m_currentIndex = -1;
@@ -391,7 +454,13 @@ QString CommandQueue::getPresetData(const QString &name) const
         return QString();
     }
 
-    QJsonDocument doc(m_presets.value(name).toObject());
+    QJsonObject internalPreset = m_presets.value(name).toObject();
+    QJsonObject out;
+    out["name"] = name;
+    out["description"] = internalPreset.value("description").toString();
+    out["commands"] = internalPreset.value("commands").toArray();
+
+    QJsonDocument doc(out);
     return QString::fromUtf8(doc.toJson(QJsonDocument::Indented));
 }
 
@@ -403,26 +472,50 @@ void CommandQueue::addPresetToQueue(const QString &presetName)
     }
 
     QJsonObject preset = m_presets.value(presetName).toObject();
+    QJsonArray commands = preset.value("commands").toArray();
+    QString description = preset.value("description").toString();
 
-    MqttCommand cmd;
-    cmd.name = presetName;
-    cmd.topic = preset.value("topic").toString();
-    cmd.payload = preset.value("payload").toString();
-    cmd.qos = preset.value("qos").toInt(0);
-    cmd.retain = preset.value("retain").toBool(false);
-    cmd.delay = preset.value("delay").toInt(1000);
-    cmd.condition = preset.value("condition").toString();
-    cmd.description = preset.value("description").toString();
-
-    if (!validateCommand(cmd)) {
-        emitStructuredLog(QString("Invalid preset configuration: %1").arg(presetName), "error");
+    if (commands.isEmpty()) {
+        emitStructuredLog(QString("Preset has no commands: %1").arg(presetName), "error");
         return;
     }
 
-    m_commandList.append(cmd);  // O(1) amortized
-    emit queueSizeChanged();
+    int added = 0;
+    for (const QJsonValue &cmdVal : commands) {
+        QJsonObject cmdObj = cmdVal.toObject();
+        QString type = cmdObj.value("type").toString(QStringLiteral("publish"));
 
-    emitLog(QString("Added preset to queue: %1").arg(presetName));
+        MqttCommand cmd;
+        cmd.description = description;
+
+        if (type == QLatin1String("script")) {
+            cmd.commandType = CommandType::Script;
+            cmd.name = cmdObj.value("name").toString(presetName);
+            cmd.scriptPath = cmdObj.value("script").toString();
+            cmd.scriptArgs = cmdObj.value("args").toString();
+            cmd.delay = cmdObj.value("delay").toInt(0);
+        } else {
+            cmd.commandType = CommandType::Publish;
+            cmd.name = cmdObj.value("name").toString(presetName);
+            cmd.topic = cmdObj.value("topic").toString();
+            cmd.payload = cmdObj.value("payload").toString();
+            cmd.qos = cmdObj.value("qos").toInt(0);
+            cmd.retain = cmdObj.value("retain").toBool(false);
+            cmd.delay = cmdObj.value("delay").toInt(1000);
+            cmd.condition = cmdObj.value("condition").toString();
+        }
+
+        if (!validateCommand(cmd)) {
+            emitStructuredLog(QString("Invalid command in preset '%1', skipping").arg(presetName), "error");
+            continue;
+        }
+
+        m_commandList.append(cmd);
+        added++;
+    }
+
+    emit queueSizeChanged();
+    emitLog(QString("Added preset to queue: %1 (%2 commands)").arg(presetName).arg(added));
 }
 
 void CommandQueue::clearPresets()
@@ -450,6 +543,9 @@ QVariantList CommandQueue::getQueueItems() const
         item["retain"] = cmd.retain;
         item["delay"] = cmd.delay;
         item["description"] = cmd.description;
+        item["commandType"] = static_cast<int>(cmd.commandType);
+        item["scriptPath"] = cmd.scriptPath;
+        item["scriptArgs"] = cmd.scriptArgs;
         items.append(item);
     }
 
@@ -470,6 +566,9 @@ QVariantMap CommandQueue::getCommandAtIndex(int index) const
         item["retain"] = cmd.retain;
         item["delay"] = cmd.delay;
         item["description"] = cmd.description;
+        item["commandType"] = static_cast<int>(cmd.commandType);
+        item["scriptPath"] = cmd.scriptPath;
+        item["scriptArgs"] = cmd.scriptArgs;
     }
 
     return item;
@@ -509,15 +608,273 @@ void CommandQueue::executeCurrentCommand()
     // O(1) direct access
     const MqttCommand &cmd = m_commandList[m_currentIndex];
 
-    emitStructuredLog(QString("Executing [%1/%2]: %3")
-                .arg(m_currentIndex + 1)
-                .arg(m_commandList.size())
-                .arg(cmd.name), "info", cmd.topic, cmd.payload, "out", cmd.qos);
+    if (cmd.commandType == CommandType::Script) {
+        emitStructuredLog(QString("Executing script [%1/%2]: %3")
+                    .arg(m_currentIndex + 1)
+                    .arg(m_commandList.size())
+                    .arg(cmd.name), "info");
+        executeScriptCommand(cmd);
+        // scheduleNextCommand() will be called by startProcess() on script finish
+    } else {
+        emitStructuredLog(QString("Executing [%1/%2]: %3")
+                    .arg(m_currentIndex + 1)
+                    .arg(m_commandList.size())
+                    .arg(cmd.name), "info", cmd.topic, cmd.payload, "out", cmd.qos);
 
-    emit publishRequested(cmd.topic, cmd.payload, cmd.qos, cmd.retain);
-    emit commandExecuted(cmd.name, cmd.topic, cmd.payload);
+        emit publishRequested(cmd.topic, cmd.payload, cmd.qos, cmd.retain);
+        emit commandExecuted(cmd.name, cmd.topic, cmd.payload);
 
-    scheduleNextCommand();
+        scheduleNextCommand();
+    }
+}
+
+void CommandQueue::executeScriptCommand(const MqttCommand &cmd)
+{
+    startProcess(cmd.name, cmd.scriptPath, cmd.scriptArgs, true);
+}
+
+void CommandQueue::startProcess(const QString &name, const QString &scriptPath,
+                                const QString &scriptArgs, bool continueQueue,
+                                const QVariantMap &envVars)
+{
+    // For queue commands we reuse m_currentProcess slot; for triggers we use a detached process
+    if (continueQueue) {
+        if (m_currentProcess) {
+            m_currentProcess->kill();
+            m_currentProcess->deleteLater();
+            m_currentProcess = nullptr;
+        }
+    }
+
+    auto *proc = new QProcess(this);
+    if (continueQueue)
+        m_currentProcess = proc;
+
+    // Set environment
+    if (!envVars.isEmpty()) {
+        QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+        for (auto it = envVars.cbegin(); it != envVars.cend(); ++it)
+            env.insert(it.key(), it.value().toString());
+        proc->setProcessEnvironment(env);
+    }
+
+    QStringList args;
+    QString program;
+
+#ifdef Q_OS_WIN
+    program = QStringLiteral("powershell.exe");
+    args << QStringLiteral("-ExecutionPolicy") << QStringLiteral("Bypass")
+         << QStringLiteral("-File") << scriptPath;
+    if (!scriptArgs.isEmpty())
+        args << scriptArgs.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+#else
+    program = QStringLiteral("/bin/bash");
+    QString fullCmd = scriptArgs.isEmpty() ? scriptPath : scriptPath + QLatin1Char(' ') + scriptArgs;
+    args << QStringLiteral("-c") << fullCmd;
+#endif
+
+    emitStructuredLog(QString("Launching script: %1 %2").arg(scriptPath, scriptArgs), "info");
+
+    connect(proc, &QProcess::readyReadStandardOutput, this, [this, proc, name]() {
+        QString out = QString::fromUtf8(proc->readAllStandardOutput()).trimmed();
+        if (!out.isEmpty())
+            emitStructuredLog(QString("[%1] %2").arg(name, out), "info");
+    });
+    connect(proc, &QProcess::readyReadStandardError, this, [this, proc, name]() {
+        QString err = QString::fromUtf8(proc->readAllStandardError()).trimmed();
+        if (!err.isEmpty())
+            emitStructuredLog(QString("[%1][stderr] %2").arg(name, err), "warning");
+    });
+
+    connect(proc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            this, [this, proc, name, continueQueue](int exitCode, QProcess::ExitStatus) {
+        emitStructuredLog(QString("Script '%1' finished with exit code %2").arg(name).arg(exitCode),
+                          exitCode == 0 ? "success" : "warning");
+        emit scriptOutputReceived(name, QString(), exitCode);
+        if (m_currentProcess == proc)
+            m_currentProcess = nullptr;
+        proc->deleteLater();
+        if (continueQueue && m_isRunning && !m_isPaused)
+            scheduleNextCommand();
+    });
+
+    proc->start(program, args);
+    if (!proc->waitForStarted(3000)) {
+        emitStructuredLog(QString("Failed to start script: %1").arg(scriptPath), "error");
+        if (m_currentProcess == proc)
+            m_currentProcess = nullptr;
+        proc->deleteLater();
+        if (continueQueue && m_isRunning && !m_isPaused)
+            scheduleNextCommand();
+    }
+}
+
+// --- Trigger management ---
+
+QString CommandQueue::addTrigger(const QString &name, const QString &topicPattern,
+                                 const QString &eventType, const QString &scriptPath,
+                                 const QString &scriptArgs)
+{
+    ScriptTrigger t;
+    t.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    t.name = name.isEmpty() ? topicPattern : name;
+    t.topicPattern = topicPattern;
+    t.eventType = eventType;
+    t.scriptPath = scriptPath;
+    t.scriptArgs = scriptArgs;
+    t.enabled = true;
+
+    m_triggers.append(t);
+    emit triggersChanged();
+    emitLog(QString("Trigger added: '%1' [%2 on %3]").arg(t.name, eventType, topicPattern));
+    return t.id;
+}
+
+void CommandQueue::removeTrigger(const QString &id)
+{
+    for (int i = 0; i < m_triggers.size(); ++i) {
+        if (m_triggers[i].id == id) {
+            emitLog(QString("Trigger removed: '%1'").arg(m_triggers[i].name));
+            m_triggers.removeAt(i);
+            emit triggersChanged();
+            return;
+        }
+    }
+}
+
+void CommandQueue::setTriggerEnabled(const QString &id, bool enabled)
+{
+    for (ScriptTrigger &t : m_triggers) {
+        if (t.id == id) {
+            t.enabled = enabled;
+            emit triggersChanged();
+            return;
+        }
+    }
+}
+
+QVariantList CommandQueue::getTriggers() const
+{
+    QVariantList list;
+    for (const ScriptTrigger &t : m_triggers) {
+        QVariantMap m;
+        m["id"] = t.id;
+        m["name"] = t.name;
+        m["topicPattern"] = t.topicPattern;
+        m["eventType"] = t.eventType;
+        m["scriptPath"] = t.scriptPath;
+        m["scriptArgs"] = t.scriptArgs;
+        m["enabled"] = t.enabled;
+        list.append(m);
+    }
+    return list;
+}
+
+bool CommandQueue::matchTopic(const QString &pattern, const QString &topic)
+{
+    const QStringList patParts = pattern.split(QLatin1Char('/'));
+    const QStringList topParts = topic.split(QLatin1Char('/'));
+
+    for (int i = 0; i < patParts.size(); ++i) {
+        if (patParts[i] == QLatin1String("#"))
+            return true; // matches everything remaining
+        if (i >= topParts.size())
+            return false;
+        if (patParts[i] != QLatin1String("+") && patParts[i] != topParts[i])
+            return false;
+    }
+    return patParts.size() == topParts.size();
+}
+
+void CommandQueue::checkTriggers(const QString &topic, const QString &payload,
+                                 const QString &eventType)
+{
+    for (const ScriptTrigger &t : m_triggers) {
+        if (!t.enabled) continue;
+        if (t.eventType != eventType) continue;
+        if (!matchTopic(t.topicPattern, topic)) continue;
+
+        emitStructuredLog(
+            QString("Trigger '%1' fired [%2 on %3]").arg(t.name, eventType, topic),
+            "info", topic, payload);
+        emit triggerFired(t.name, topic, payload);
+
+        QVariantMap env;
+        env["MQTT_TOPIC"]   = topic;
+        env["MQTT_PAYLOAD"] = payload;
+        env["MQTT_EVENT"]   = eventType;
+
+        // Triggers use detached processes (continueQueue = false)
+        startProcess(t.name, t.scriptPath, t.scriptArgs, false, env);
+    }
+}
+
+bool CommandQueue::loadTriggersFromFile(const QString &filePath)
+{
+    QFile file(filePath);
+    if (!file.open(QIODevice::ReadOnly)) {
+        emitStructuredLog(QString("Cannot open triggers file: %1").arg(filePath), "error");
+        return false;
+    }
+
+    QJsonParseError err;
+    QJsonDocument doc = QJsonDocument::fromJson(file.readAll(), &err);
+    file.close();
+
+    if (err.error != QJsonParseError::NoError || !doc.isObject()) {
+        emitStructuredLog(QString("Triggers file parse error: %1").arg(err.errorString()), "error");
+        return false;
+    }
+
+    QJsonArray arr = doc.object().value("triggers").toArray();
+    m_triggers.clear();
+
+    for (const QJsonValue &v : arr) {
+        QJsonObject obj = v.toObject();
+        ScriptTrigger t;
+        t.id          = obj.value("id").toString(QUuid::createUuid().toString(QUuid::WithoutBraces));
+        t.name        = obj.value("name").toString();
+        t.topicPattern = obj.value("topicPattern").toString();
+        t.eventType   = obj.value("eventType").toString();
+        t.scriptPath  = obj.value("scriptPath").toString();
+        t.scriptArgs  = obj.value("scriptArgs").toString();
+        t.enabled     = obj.value("enabled").toBool(true);
+        m_triggers.append(t);
+    }
+
+    emit triggersChanged();
+    emitLog(QString("Loaded %1 triggers from: %2").arg(m_triggers.size()).arg(filePath));
+    return true;
+}
+
+bool CommandQueue::saveTriggersToFile(const QString &filePath) const
+{
+    QFile file(filePath);
+    if (!file.open(QIODevice::WriteOnly)) {
+        // Can't emit non-const log, use qWarning
+        qWarning() << "Cannot save triggers file:" << filePath;
+        return false;
+    }
+
+    QJsonArray arr;
+    for (const ScriptTrigger &t : m_triggers) {
+        QJsonObject obj;
+        obj["id"]           = t.id;
+        obj["name"]         = t.name;
+        obj["topicPattern"] = t.topicPattern;
+        obj["eventType"]    = t.eventType;
+        obj["scriptPath"]   = t.scriptPath;
+        obj["scriptArgs"]   = t.scriptArgs;
+        obj["enabled"]      = t.enabled;
+        arr.append(obj);
+    }
+
+    QJsonObject root;
+    root["version"]  = 1;
+    root["triggers"] = arr;
+
+    file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+    return true;
 }
 
 void CommandQueue::scheduleNextCommand()
@@ -566,6 +923,14 @@ void CommandQueue::setLastError(const QString &error)
 
 bool CommandQueue::validateCommand(const MqttCommand &cmd)
 {
+    if (cmd.commandType == CommandType::Script) {
+        if (cmd.scriptPath.isEmpty()) {
+            emitStructuredLog("Script validation failed: empty script path", "error");
+            return false;
+        }
+        return true;
+    }
+
     if (cmd.topic.isEmpty()) {
         emitStructuredLog("Command validation failed: empty topic", "error");
         return false;

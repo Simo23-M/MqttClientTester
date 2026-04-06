@@ -8,7 +8,10 @@
 #include <QList>
 #include <QQmlEngine>
 #include <QVariantMap>
+#include <QProcess>
+#include <QUuid>
 
+enum class CommandType { Publish = 0, Script = 1 };
 
 struct MqttCommand {
     QString name;
@@ -18,10 +21,22 @@ struct MqttCommand {
     bool retain;
     int delay; // milliseconds
     QString condition;
-    QString description; // Added for v2 preset format
+    QString description;
+    CommandType commandType = CommandType::Publish;
+    QString scriptPath;
+    QString scriptArgs;
 };
 Q_DECLARE_METATYPE(MqttCommand)
 
+struct ScriptTrigger {
+    QString id;
+    QString name;
+    QString topicPattern;   // MQTT wildcard pattern (+ and #)
+    QString eventType;      // "received" | "published"
+    QString scriptPath;
+    QString scriptArgs;
+    bool enabled = true;
+};
 
 class CommandQueue : public QObject
 {
@@ -33,6 +48,7 @@ class CommandQueue : public QObject
     Q_PROPERTY(int currentIndex READ currentIndex NOTIFY currentIndexChanged)
     Q_PROPERTY(QString loadedPresetFile READ loadedPresetFile NOTIFY loadedPresetFileChanged)
     Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged)
+    Q_PROPERTY(int triggerCount READ triggerCount NOTIFY triggersChanged)
 
 
 public:
@@ -43,6 +59,7 @@ public:
     int currentIndex() const { return m_currentIndex; }
     QString loadedPresetFile() const { return m_loadedPresetFile; }
     QString lastError() const { return m_lastError; }
+    int triggerCount() const { return m_triggers.size(); }
 
 public slots:
     // Preset management
@@ -72,6 +89,23 @@ public slots:
     Q_INVOKABLE void addPresetToQueue(const QString &presetName);
     Q_INVOKABLE void clearPresets();
 
+    // Script execution (immediate / queue)
+    Q_INVOKABLE void addScriptToQueue(const QString &name, const QString &scriptPath,
+                                      const QString &scriptArgs, int delay);
+    Q_INVOKABLE void executeScriptNow(const QString &scriptPath, const QString &scriptArgs);
+
+    // Script triggers
+    Q_INVOKABLE QString addTrigger(const QString &name, const QString &topicPattern,
+                                   const QString &eventType, const QString &scriptPath,
+                                   const QString &scriptArgs);
+    Q_INVOKABLE void removeTrigger(const QString &id);
+    Q_INVOKABLE void setTriggerEnabled(const QString &id, bool enabled);
+    Q_INVOKABLE QVariantList getTriggers() const;
+    Q_INVOKABLE void checkTriggers(const QString &topic, const QString &payload,
+                                   const QString &eventType);
+    Q_INVOKABLE bool loadTriggersFromFile(const QString &filePath);
+    Q_INVOKABLE bool saveTriggersToFile(const QString &filePath) const;
+
     // Queue inspection - O(1) access
     Q_INVOKABLE QVariantList getQueueItems() const;
     Q_INVOKABLE QVariantMap getCommandAtIndex(int index) const;
@@ -87,6 +121,9 @@ signals:
     void errorOccurred(const QString &error);
     void logMessage(const QVariantMap &entry);
     void publishRequested(const QString &topic, const QString &payload, int qos, bool retain);
+    void scriptOutputReceived(const QString &name, const QString &output, int exitCode);
+    void triggersChanged();
+    void triggerFired(const QString &name, const QString &topic, const QString &payload);
 
 
 private:
@@ -100,6 +137,8 @@ private:
     QString m_lastError;
     QList<MqttCommand> m_commandList;  // Changed from QQueue for O(1) indexed access
     QJsonObject m_presets;
+    QProcess *m_currentProcess = nullptr;
+    QList<ScriptTrigger> m_triggers;
 
 private slots:
     void onTimerTimeout();
@@ -107,6 +146,11 @@ private slots:
 private:
     void executeCurrentCommand();
     void scheduleNextCommand();
+    void executeScriptCommand(const MqttCommand &cmd);
+    void startProcess(const QString &name, const QString &scriptPath,
+                      const QString &scriptArgs, bool continueQueue,
+                      const QVariantMap &envVars = QVariantMap());
+    static bool matchTopic(const QString &pattern, const QString &topic);
     void emitLog(const QString &message);
     void emitStructuredLog(const QString &message, const QString &level,
                            const QString &topic = QString(), const QString &payload = QString(),

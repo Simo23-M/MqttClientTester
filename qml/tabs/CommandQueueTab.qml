@@ -1,10 +1,10 @@
+pragma ComponentBehavior: Bound
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Controls.Material 2.15
 import QtQuick.Layouts 1.15
 import Qt.labs.platform 1.1
 import "../components"
-import "../dialogs"
 
 RowLayout {
     id: root
@@ -49,6 +49,17 @@ RowLayout {
             var filePath = root.appController.urlToLocalFile(file)
             root.commandQueue.savePresetsToFile(filePath)
         }
+    }
+
+    FileDialog {
+        id: scriptBrowseDialog
+        title: "Select Script File"
+        nameFilters: Qt.platform.os === "windows"
+            ? ["PowerShell Scripts (*.ps1)", "All Files (*)"]
+            : ["Shell Scripts (*.sh)", "All Files (*)"]
+        folder: root.appController ? root.appController.localFileToUrl(root.appController.getHomePath()) : ""
+        fileMode: FileDialog.OpenFile
+        onAccepted: scriptPathField.text = root.appController.urlToLocalFile(file)
     }
 
     // Left panel - Preset Management and Queue Builder
@@ -168,9 +179,13 @@ RowLayout {
                             model: root.presetListModel
 
                             delegate: Rectangle {
+                                id: presetDelegate
+                                required property var model
+                                required property int index
+
                                 width: presetListView.width
                                 height: 70 * root.scaleFactor
-                                color: index % 2 === 0 ? Material.background : Qt.darker(Material.background, 1.1)
+                                color: presetDelegate.index % 2 === 0 ? Material.background : Qt.darker(Material.background, 1.1)
                                 border.color: Material.accent
                                 border.width: 1
 
@@ -184,7 +199,7 @@ RowLayout {
                                         spacing: 5 * root.scaleFactor
 
                                         Text {
-                                            text: model.name
+                                            text: presetDelegate.model.name
                                             color: Material.accent
                                             font.family: root.fontFamily
                                             font.pixelSize: 13
@@ -206,7 +221,7 @@ RowLayout {
                                         font.pixelSize: 11
                                         implicitHeight: 30 * root.scaleFactor
                                         onClicked: {
-                                            root.commandQueue.addPresetToQueue(model.name)
+                                            root.commandQueue.addPresetToQueue(presetDelegate.model.name)
                                             root.updateQueueListRequested()
                                         }
                                     }
@@ -218,7 +233,7 @@ RowLayout {
                                         implicitHeight: 30 * root.scaleFactor
                                         enabled: root.mqttClient && root.mqttClient.connected
                                         onClicked: {
-                                            root.commandQueue.addPresetToQueue(model.name)
+                                            root.commandQueue.addPresetToQueue(presetDelegate.model.name)
                                             root.updateQueueListRequested()
                                             root.commandQueue.executeCommand(root.commandQueue.queueSize - 1)
                                         }
@@ -227,7 +242,7 @@ RowLayout {
 
                                 MouseArea {
                                     anchors.fill: parent
-                                    onClicked: root.showPresetDetail(model.name, root.commandQueue.getPresetData(model.name))
+                                    onClicked: root.showPresetDetail(presetDelegate.model.name, root.commandQueue.getPresetData(presetDelegate.model.name))
                                     propagateComposedEvents: true
                                     z: -1
                                 }
@@ -243,6 +258,83 @@ RowLayout {
                                 subtitle: "Load a JSON preset file to get started"
                                 scaleFactor: root.scaleFactor
                             }
+                        }
+                    }
+                }
+            }
+
+            // Add Script to Queue
+            GroupBox {
+                title: "Add Script to Queue"
+                Layout.fillWidth: true
+                Material.elevation: 2
+
+                ColumnLayout {
+                    anchors.fill: parent
+                    spacing: 8 * root.scaleFactor
+
+                    TextField {
+                        id: scriptNameField
+                        placeholderText: "Script name (optional)"
+                        Layout.fillWidth: true
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 6 * root.scaleFactor
+
+                        TextField {
+                            id: scriptPathField
+                            placeholderText: "Script path..."
+                            Layout.fillWidth: true
+                        }
+
+                        Button {
+                            text: "Browse"
+                            font.pixelSize: 11
+                            implicitHeight: 36 * root.scaleFactor
+                            onClicked: scriptBrowseDialog.open()
+                        }
+                    }
+
+                    TextField {
+                        id: scriptArgsField
+                        placeholderText: "Arguments (optional)"
+                        Layout.fillWidth: true
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8 * root.scaleFactor
+
+                        Label {
+                            text: "Delay (ms):"
+                            font.pixelSize: 12
+                        }
+
+                        SpinBox {
+                            id: scriptDelaySpinBox
+                            from: 0
+                            to: 60000
+                            value: 0
+                            stepSize: 500
+                            Layout.fillWidth: true
+                        }
+                    }
+
+                    Button {
+                        text: "Add Script to Queue"
+                        Material.background: Material.Orange
+                        Layout.fillWidth: true
+                        enabled: scriptPathField.text.trim() !== ""
+                        onClicked: {
+                            root.commandQueue.addScriptToQueue(
+                                scriptNameField.text.trim(),
+                                scriptPathField.text.trim(),
+                                scriptArgsField.text.trim(),
+                                scriptDelaySpinBox.value
+                            )
+                            root.updateQueueListRequested()
                         }
                     }
                 }
@@ -358,14 +450,18 @@ RowLayout {
                     model: root.queueListModel
 
                     delegate: Rectangle {
+                        id: queueDelegate
+                        required property var model
+                        required property int index
+
                         width: queueListView.width
                         height: 90 * root.scaleFactor
-                        color: root.commandQueue && index === root.commandQueue.currentIndex && root.commandQueue.isRunning ?
+                        color: root.commandQueue && queueDelegate.index === root.commandQueue.currentIndex && root.commandQueue.isRunning ?
                                Qt.darker(Material.color(Material.Green), 1.8) :
-                               index % 2 === 0 ? Material.background : Qt.darker(Material.background, 1.1)
-                        border.color: root.commandQueue && index === root.commandQueue.currentIndex && root.commandQueue.isRunning ?
+                               queueDelegate.index % 2 === 0 ? Material.background : Qt.darker(Material.background, 1.1)
+                        border.color: root.commandQueue && queueDelegate.index === root.commandQueue.currentIndex && root.commandQueue.isRunning ?
                                      Material.color(Material.Green) : Material.accent
-                        border.width: root.commandQueue && index === root.commandQueue.currentIndex && root.commandQueue.isRunning ? 2 : 1
+                        border.width: root.commandQueue && queueDelegate.index === root.commandQueue.currentIndex && root.commandQueue.isRunning ? 2 : 1
 
                         RowLayout {
                             anchors.fill: parent
@@ -374,13 +470,13 @@ RowLayout {
 
                             // Position indicator
                             Rectangle {
-                                width: 35 * root.scaleFactor
-                                height: 35 * root.scaleFactor
+                                implicitWidth: 35 * root.scaleFactor
+                                implicitHeight: 35 * root.scaleFactor
                                 radius: 17.5 * root.scaleFactor
                                 color: Material.accent
 
                                 Label {
-                                    text: (index + 1).toString()
+                                    text: (queueDelegate.index + 1).toString()
                                     font.bold: true
                                     font.pixelSize: 14
                                     color: "white"
@@ -393,19 +489,33 @@ RowLayout {
                                 spacing: 4 * root.scaleFactor
 
                                 Text {
-                                    text: model.name
-                                    color: Material.accent
+                                    text: queueDelegate.model.name
+                                    color: queueDelegate.model.commandType === 1
+                                           ? Material.color(Material.Orange) : Material.accent
                                     font.family: root.fontFamily
                                     font.pixelSize: 12
                                     font.bold: true
                                     Layout.fillWidth: true
                                 }
 
+                                // Publish command info
                                 Text {
-                                    text: "Topic: " + model.topic
+                                    visible: queueDelegate.model.commandType !== 1
+                                    text: "Topic: " + queueDelegate.model.topic
                                     color: Material.foreground
                                     font.pixelSize: 10
                                     opacity: 0.8
+                                    Layout.fillWidth: true
+                                    elide: Text.ElideRight
+                                }
+
+                                // Script command info
+                                Text {
+                                    visible: queueDelegate.model.commandType === 1
+                                    text: "Script: " + queueDelegate.model.scriptPath
+                                    color: Material.color(Material.Orange)
+                                    font.pixelSize: 10
+                                    opacity: 0.9
                                     Layout.fillWidth: true
                                     elide: Text.ElideRight
                                 }
@@ -414,25 +524,36 @@ RowLayout {
                                     spacing: 10 * root.scaleFactor
 
                                     Text {
-                                        text: "QoS: " + model.qos
+                                        visible: queueDelegate.model.commandType !== 1
+                                        text: "QoS: " + queueDelegate.model.qos
                                         color: Material.foreground
                                         font.pixelSize: 9
                                         opacity: 0.6
                                     }
 
                                     Text {
-                                        text: "Delay: " + model.delay + "ms"
+                                        text: "Delay: " + queueDelegate.model.delay + "ms"
                                         color: Material.foreground
                                         font.pixelSize: 9
                                         opacity: 0.6
                                     }
 
                                     Text {
-                                        text: model.retain ? "RETAIN" : ""
+                                        visible: queueDelegate.model.commandType !== 1 && queueDelegate.model.retain
+                                        text: "RETAIN"
                                         color: Material.color(Material.Orange)
                                         font.pixelSize: 9
                                         font.bold: true
-                                        visible: model.retain
+                                    }
+
+                                    Text {
+                                        visible: queueDelegate.model.commandType === 1
+                                                 && queueDelegate.model.scriptArgs !== ""
+                                        text: "Args: " + queueDelegate.model.scriptArgs
+                                        color: Material.foreground
+                                        font.pixelSize: 9
+                                        opacity: 0.6
+                                        elide: Text.ElideRight
                                     }
                                 }
                             }
@@ -442,24 +563,24 @@ RowLayout {
 
                                 Button {
                                     text: "Up"
-                                    enabled: index > 0 && root.commandQueue && !root.commandQueue.isRunning
+                                    enabled: queueDelegate.index > 0 && root.commandQueue && !root.commandQueue.isRunning
                                     implicitWidth: 50 * root.scaleFactor
                                     implicitHeight: 32 * root.scaleFactor
                                     font.pixelSize: 11
                                     onClicked: {
-                                        root.commandQueue.moveCommandUp(index)
+                                        root.commandQueue.moveCommandUp(queueDelegate.index)
                                         root.updateQueueListRequested()
                                     }
                                 }
 
                                 Button {
                                     text: "Down"
-                                    enabled: index < root.queueListModel.count - 1 && root.commandQueue && !root.commandQueue.isRunning
+                                    enabled: queueDelegate.index < root.queueListModel.count - 1 && root.commandQueue && !root.commandQueue.isRunning
                                     implicitWidth: 50 * root.scaleFactor
                                     implicitHeight: 32 * root.scaleFactor
                                     font.pixelSize: 11
                                     onClicked: {
-                                        root.commandQueue.moveCommandDown(index)
+                                        root.commandQueue.moveCommandDown(queueDelegate.index)
                                         root.updateQueueListRequested()
                                     }
                                 }
@@ -473,7 +594,7 @@ RowLayout {
                                 implicitHeight: 45 * root.scaleFactor
                                 font.pixelSize: 11
                                 onClicked: {
-                                    root.commandQueue.removeCommandFromQueue(index)
+                                    root.commandQueue.removeCommandFromQueue(queueDelegate.index)
                                     root.updateQueueListRequested()
                                 }
                             }

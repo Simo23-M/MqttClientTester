@@ -18,7 +18,7 @@ ApplicationWindow {
     property string fontChosed: "Consolas, Monaco, monospace"
     property alias mqttClient: mqttClient
     property alias commandQueue: commandQueue
-    readonly property int maxLogEntries: 500
+    readonly property int maxLogEntries: brokerLogsTab.maxLogEntries
 
     width: 1200 * k
     height: 800 * k
@@ -76,6 +76,9 @@ ApplicationWindow {
         onMessageBatchReceived: function(messages) {
             mqttTreeModel.addMessageBatch(messages)
         }
+        onMessageReceived: function(topic, message) {
+            commandQueue.checkTriggers(topic, message, "received")
+        }
     }
 
     CommandQueue {
@@ -89,6 +92,10 @@ ApplicationWindow {
             mqttClient.publish(topic, payload, qos, retain)
         }
         onQueueFinished: toastNotification.show("Queue execution completed", "success")
+        onScriptOutputReceived: function(name, output, exitCode) {
+            if (exitCode !== 0)
+                toastNotification.show("Script '" + name + "' exited with code " + exitCode, "warning")
+        }
         onErrorOccurred: function(error) {
             logModel.append({
                 "timestamp": new Date().toLocaleTimeString(Qt.locale(), "hh:mm:ss.zzz"),
@@ -160,6 +167,7 @@ ApplicationWindow {
             currentIndex: tabBar.currentIndex
 
             BrokerLogsTab {
+                id: brokerLogsTab
                 mqttClient: window.mqttClient
                 appController: AppController
                 logModel: logModel
@@ -170,6 +178,8 @@ ApplicationWindow {
             TopicsMessagesTab {
                 mqttClient: window.mqttClient
                 mqttTreeModel: mqttTreeModel
+                appController: AppController
+                commandQueue: window.commandQueue
                 activeSubscriptionsModel: activeSubscriptionsModel
                 scaleFactor: window.k
                 fontFamily: window.fontChosed
@@ -184,6 +194,7 @@ ApplicationWindow {
                 onPublishRequested: function(topic, message, qos, retain) {
                     mqttClient.publish(topic, message, qos, retain)
                     mqttTreeModel.addMessage(topic, message, false)
+                    commandQueue.checkTriggers(topic, message, "published")
                 }
                 onMessageClicked: function(topic, message, timestamp, history) {
                     messageDetailDialog.topic = topic
@@ -226,8 +237,8 @@ ApplicationWindow {
                 queueListModel: queueListModel
                 scaleFactor: window.k
                 fontFamily: window.fontChosed
-                onUpdatePresetListRequested: updatePresetList()
-                onUpdateQueueListRequested: updateQueueList()
+                onUpdatePresetListRequested: window.updatePresetList()
+                onUpdateQueueListRequested: window.updateQueueList()
                 onShowPresetDetail: function(name, data) {
                     presetDetailDialog.presetName = name
                     presetDetailDialog.presetData = data

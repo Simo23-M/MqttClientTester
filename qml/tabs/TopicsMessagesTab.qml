@@ -1,9 +1,10 @@
+pragma ComponentBehavior: Bound
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Controls.Material 2.15
 import QtQuick.Layouts 1.15
+import Qt.labs.platform 1.1
 import "../components"
-import "../dialogs"
 import "../utils/PayloadFormatter.js" as Formatter
 
 RowLayout {
@@ -11,6 +12,8 @@ RowLayout {
 
     property var mqttClient
     property var mqttTreeModel
+    property var appController
+    property var commandQueue
     property ListModel activeSubscriptionsModel
     property double scaleFactor: 1
     property string fontFamily: "Consolas, Monaco, monospace"
@@ -25,6 +28,44 @@ RowLayout {
     signal treeClearRequested()
 
     spacing: 10 * scaleFactor
+
+    FileDialog {
+        id: triggerScriptBrowseDialog
+        title: "Select Script File"
+        nameFilters: Qt.platform.os === "windows"
+            ? ["PowerShell Scripts (*.ps1)", "All Files (*)"]
+            : ["Shell Scripts (*.sh)", "All Files (*)"]
+        fileMode: FileDialog.OpenFile
+        onAccepted: triggerScriptPathField.text = root.appController
+            ? root.appController.urlToLocalFile(file)
+            : file.toString().replace("file://", "")
+    }
+
+    FileDialog {
+        id: triggerLoadDialog
+        title: "Load Triggers File"
+        nameFilters: ["JSON Files (*.json)", "All Files (*)"]
+        fileMode: FileDialog.OpenFile
+        folder: root.appController ? root.appController.localFileToUrl(root.appController.getDocumentsPath()) : ""
+        onAccepted: {
+            if (root.commandQueue)
+                root.commandQueue.loadTriggersFromFile(
+                    root.appController.urlToLocalFile(file))
+        }
+    }
+
+    FileDialog {
+        id: triggerSaveDialog
+        title: "Save Triggers File"
+        nameFilters: ["JSON Files (*.json)", "All Files (*)"]
+        fileMode: FileDialog.SaveFile
+        folder: root.appController ? root.appController.localFileToUrl(root.appController.getDocumentsPath()) : ""
+        onAccepted: {
+            if (root.commandQueue)
+                root.commandQueue.saveTriggersToFile(
+                    root.appController.urlToLocalFile(file))
+        }
+    }
 
     // Left panel - Subscription and Publishing
     ScrollView {
@@ -207,6 +248,226 @@ RowLayout {
                 }
             }
 
+            // Script Triggers
+            GroupBox {
+                title: "Script Triggers (" + (root.commandQueue ? root.commandQueue.triggerCount : 0) + ")"
+                Layout.fillWidth: true
+                Material.elevation: 2
+
+                ColumnLayout {
+                    anchors.fill: parent
+                    spacing: 8 * root.scaleFactor
+
+                    // Load / Save buttons
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 6 * root.scaleFactor
+
+                        Button {
+                            text: "Load"
+                            font.pixelSize: 11
+                            Layout.fillWidth: true
+                            onClicked: triggerLoadDialog.open()
+                        }
+
+                        Button {
+                            text: "Save"
+                            font.pixelSize: 11
+                            Layout.fillWidth: true
+                            enabled: root.commandQueue && root.commandQueue.triggerCount > 0
+                            onClicked: triggerSaveDialog.open()
+                        }
+                    }
+
+                    // Trigger list
+                    ListView {
+                        id: triggerListView
+                        Layout.fillWidth: true
+                        implicitHeight: Math.min(contentHeight, 200 * root.scaleFactor)
+                        clip: true
+                        visible: root.commandQueue && root.commandQueue.triggerCount > 0
+
+                        model: root.commandQueue ? root.commandQueue.getTriggers() : []
+
+                        delegate: Rectangle {
+                            id: triggerDelegate
+                            required property var modelData
+                            required property int index
+
+                            width: triggerListView.width
+                            height: 56 * root.scaleFactor
+                            color: triggerDelegate.index % 2 === 0
+                                   ? Material.background : Qt.darker(Material.background, 1.1)
+                            border.color: triggerDelegate.modelData.enabled
+                                          ? Material.color(Material.Orange) : Material.accent
+                            border.width: 1
+
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.margins: 6 * root.scaleFactor
+                                spacing: 6 * root.scaleFactor
+
+                                Switch {
+                                    checked: triggerDelegate.modelData.enabled
+                                    implicitWidth: 44 * root.scaleFactor
+                                    onToggled: root.commandQueue.setTriggerEnabled(
+                                        triggerDelegate.modelData.id, checked)
+                                }
+
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 2 * root.scaleFactor
+
+                                    Text {
+                                        text: triggerDelegate.modelData.name
+                                        color: Material.accent
+                                        font.pixelSize: 11
+                                        font.bold: true
+                                        Layout.fillWidth: true
+                                        elide: Text.ElideRight
+                                    }
+
+                                    RowLayout {
+                                        spacing: 6 * root.scaleFactor
+
+                                        Rectangle {
+                                            radius: 3
+                                            color: triggerDelegate.modelData.eventType === "received"
+                                                   ? Material.color(Material.Blue) : Material.color(Material.Green)
+                                            implicitWidth: eventLabel.implicitWidth + 8 * root.scaleFactor
+                                            implicitHeight: eventLabel.implicitHeight + 4 * root.scaleFactor
+                                            Text {
+                                                id: eventLabel
+                                                anchors.centerIn: parent
+                                                text: triggerDelegate.modelData.eventType
+                                                color: "white"
+                                                font.pixelSize: 9
+                                                font.bold: true
+                                            }
+                                        }
+
+                                        Text {
+                                            text: triggerDelegate.modelData.topicPattern
+                                            color: Material.foreground
+                                            font.pixelSize: 10
+                                            opacity: 0.8
+                                            Layout.fillWidth: true
+                                            elide: Text.ElideRight
+                                        }
+                                    }
+                                }
+
+                                ColumnLayout {
+                                    spacing: 4 * root.scaleFactor
+
+                                    Button {
+                                        text: "▶"
+                                        font.pixelSize: 10
+                                        implicitWidth: 32 * root.scaleFactor
+                                        implicitHeight: 24 * root.scaleFactor
+                                        Material.background: Material.Orange
+                                        ToolTip.visible: hovered
+                                        ToolTip.text: "Execute now"
+                                        onClicked: root.commandQueue.executeScriptNow(
+                                            triggerDelegate.modelData.scriptPath,
+                                            triggerDelegate.modelData.scriptArgs)
+                                    }
+
+                                    Button {
+                                        text: "✕"
+                                        font.pixelSize: 10
+                                        implicitWidth: 32 * root.scaleFactor
+                                        implicitHeight: 24 * root.scaleFactor
+                                        Material.background: Material.Red
+                                        onClicked: {
+                                            root.commandQueue.removeTrigger(triggerDelegate.modelData.id)
+                                            triggerListView.model = root.commandQueue.getTriggers()
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Connections {
+                            target: root.commandQueue
+                            function onTriggersChanged() {
+                                triggerListView.model = root.commandQueue
+                                    ? root.commandQueue.getTriggers() : []
+                            }
+                        }
+                    }
+
+                    // Add trigger form
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 6 * root.scaleFactor
+
+                        TextField {
+                            id: triggerNameField
+                            placeholderText: "Trigger name (optional)"
+                            Layout.fillWidth: true
+                        }
+
+                        TextField {
+                            id: triggerPatternField
+                            placeholderText: "Topic pattern (e.g. sensor/+/temp)"
+                            Layout.fillWidth: true
+                        }
+
+                        ComboBox {
+                            id: triggerEventCombo
+                            model: ["received", "published"]
+                            Layout.fillWidth: true
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 6 * root.scaleFactor
+
+                            TextField {
+                                id: triggerScriptPathField
+                                placeholderText: "Script path..."
+                                Layout.fillWidth: true
+                            }
+
+                            Button {
+                                text: "Browse"
+                                font.pixelSize: 11
+                                implicitHeight: 36 * root.scaleFactor
+                                onClicked: triggerScriptBrowseDialog.open()
+                            }
+                        }
+
+                        TextField {
+                            id: triggerScriptArgsField
+                            placeholderText: "Arguments (optional)"
+                            Layout.fillWidth: true
+                        }
+
+                        Button {
+                            text: "Add Trigger"
+                            Material.background: Material.Orange
+                            Layout.fillWidth: true
+                            enabled: triggerPatternField.text.trim() !== ""
+                                     && triggerScriptPathField.text.trim() !== ""
+                            onClicked: {
+                                root.commandQueue.addTrigger(
+                                    triggerNameField.text.trim(),
+                                    triggerPatternField.text.trim(),
+                                    triggerEventCombo.currentText,
+                                    triggerScriptPathField.text.trim(),
+                                    triggerScriptArgsField.text.trim()
+                                )
+                                triggerNameField.clear()
+                                triggerPatternField.clear()
+                                triggerScriptPathField.clear()
+                                triggerScriptArgsField.clear()
+                            }
+                        }
+                    }
+                }
+            }
+
             Item { Layout.fillHeight: true }
         }
     }
@@ -249,52 +510,63 @@ RowLayout {
                     policy: ScrollBar.AsNeeded
                 }
 
-                delegate: MessageDelegate {
-                        topic: model.topic
-                        segment: model.segment || ""
-                        message: model.message
-                        timestamp: model.timestamp
-                        received: model.received === true || model.received === "true"
-                        historyJson: model.historyJson || ""
-                        itemIndex: index
-                        scaleFactor: root.scaleFactor
-                        fontFamily: root.fontFamily
-                        mqttConnected: root.mqttClient && root.mqttClient.connected
-                        level: model.level || 0
-                        expanded: model.expanded === true
-                        hasChildren: model.hasChildren === true
-                        hasMessage: model.hasMessage === true
-                        subtopicCount: model.subtopicCount || 0
-                        updateTick: model.updateTick || 0
+                delegate: Item {
+                        id: msgWrapper
+                        required property var model
+                        required property int index
 
-                        onToggleExpand: {
-                            root.mqttTreeModel.toggleExpanded(index)
-                        }
+                        width: mqttTreeView.width
+                        height: msgDelegate.height
 
-                        onClicked: {
-                            if (model.hasMessage) {
-                                var history = []
-                                if (historyJson && historyJson !== "") {
-                                    try {
-                                        history = JSON.parse(historyJson)
-                                    } catch (e) {
-                                        history = []
-                                    }
-                                }
-                                root.messageClicked(model.topic, model.message, model.timestamp, history)
+                        MessageDelegate {
+                            id: msgDelegate
+                            width: parent.width
+                            topic: msgWrapper.model.topic
+                            segment: msgWrapper.model.segment || ""
+                            message: msgWrapper.model.message
+                            timestamp: msgWrapper.model.timestamp
+                            received: msgWrapper.model.received === true || msgWrapper.model.received === "true"
+                            historyJson: msgWrapper.model.historyJson || ""
+                            itemIndex: msgWrapper.index
+                            scaleFactor: root.scaleFactor
+                            fontFamily: root.fontFamily
+                            mqttConnected: root.mqttClient && root.mqttClient.connected
+                            level: msgWrapper.model.level || 0
+                            expanded: msgWrapper.model.expanded === true
+                            hasChildren: msgWrapper.model.hasChildren === true
+                            hasMessage: msgWrapper.model.hasMessage === true
+                            subtopicCount: msgWrapper.model.subtopicCount || 0
+                            updateTick: msgWrapper.model.updateTick || 0
+
+                            onToggleExpand: {
+                                root.mqttTreeModel.toggleExpanded(msgWrapper.index)
                             }
-                        }
 
-                        onDeleteRetainedClicked: function(topicToDelete) {
-                            root.deleteRetainedRequested(topicToDelete)
-                        }
+                            onClicked: {
+                                if (msgWrapper.model.hasMessage) {
+                                    var history = []
+                                    if (historyJson && historyJson !== "") {
+                                        try {
+                                            history = JSON.parse(historyJson)
+                                        } catch (e) {
+                                            history = []
+                                        }
+                                    }
+                                    root.messageClicked(msgWrapper.model.topic, msgWrapper.model.message, msgWrapper.model.timestamp, history)
+                                }
+                            }
 
-                        onUseAsPublishTopic: function(topic) {
-                            root.publishTopicField.text = topic
-                        }
+                            onDeleteRetainedClicked: function(topicToDelete) {
+                                root.deleteRetainedRequested(topicToDelete)
+                            }
 
-                        onUseAsSubscribeTopic: function(topic) {
-                            root.subscribeTopicField.text = topic
+                            onUseAsPublishTopic: function(t) {
+                                root.publishTopicField.text = t
+                            }
+
+                            onUseAsSubscribeTopic: function(t) {
+                                root.subscribeTopicField.text = t
+                            }
                         }
                 }
             }
