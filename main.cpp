@@ -1,4 +1,4 @@
-#include <QGuiApplication>
+#include <QApplication>
 #include <QIcon>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
@@ -78,7 +78,7 @@ static QObject *applicationControllerProvider(QQmlEngine *engine, QJSEngine *scr
 
 int main(int argc, char *argv[])
 {
-    QGuiApplication app(argc, argv);
+    QApplication app(argc, argv);
 
     // Set application properties
     app.setApplicationName("MQTT TLS Client QML");

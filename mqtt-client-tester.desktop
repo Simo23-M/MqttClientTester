@@ -3,6 +3,6 @@ Type=Application
 Name=MQTT Client Tester
 Comment=MQTT TLS client for testing and debugging
 Exec=mqtt_tls_client_qml
-Icon=mqtt-client-tester
+Icon=AppIcon
 Categories=Development;Network;
 Terminal=false
