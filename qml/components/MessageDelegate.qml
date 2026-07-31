@@ -23,6 +23,17 @@ Rectangle {
     property bool hasMessage: false
     property int subtopicCount: 0
     property var updateTick: 0
+    property bool selected: false
+
+    // ---- derived palette (dark Material theme) ----
+    readonly property color dirColor: received ? Material.color(Material.Amber)
+                                                : Material.accent
+    readonly property color guideColor: Qt.rgba(Material.foreground.r, Material.foreground.g,
+                                                 Material.foreground.b, 0.12)
+    readonly property color hoverColor: Qt.rgba(Material.accent.r, Material.accent.g,
+                                                Material.accent.b, 0.08)
+    readonly property color selColor: Qt.rgba(Material.accent.r, Material.accent.g,
+                                              Material.accent.b, 0.16)
 
     // History navigation
     property var parsedHistory: {
@@ -77,54 +88,94 @@ Rectangle {
     signal useAsSubscribeTopic(string topic)
     signal toggleExpand()
 
+    // ---- geometry ----
+    readonly property real rowIndent: 8 * scaleFactor + root.level * 18 * scaleFactor
     width: parent ? parent.width : 200
     height: root.hasMessage
-            ? Math.max(topicText.implicitHeight + messageText.implicitHeight + (root.historyCount > 0 ? 28 * scaleFactor : 0) + 20 * scaleFactor, 60 * scaleFactor)
-            : 32 * scaleFactor
-    color: itemIndex % 2 === 0 ? Material.background : Qt.darker(Material.background, 1.1)
-    border.color: root.hasMessage
-                  ? (received ? Material.color(Material.Orange) : Material.accent)
-                  : Qt.darker(Material.background, 1.3)
-    border.width: 1
+            ? Math.max(contentCol.implicitHeight + 14 * scaleFactor, 52 * scaleFactor)
+            : 30 * scaleFactor
 
+    // flat background: no per-row border, no zebra — just hover / selection
+    color: mouseArea.containsMouse ? hoverColor
+                                    : (root.selected ? selColor : "transparent")
+    Behavior on color { ColorAnimation { duration: 90 } }
+
+    // hairline row separator (very subtle)
+    Rectangle {
+        anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+        height: 1
+        color: Qt.rgba(Material.foreground.r, Material.foreground.g, Material.foreground.b, 0.05)
+    }
+
+    // ---- indentation guide lines (drawn behind content) ----
+    Item {
+        id: guideContainer
+        anchors { left: parent.left; top: parent.top; bottom: parent.bottom }
+        anchors.leftMargin: 4 * root.scaleFactor
+        width: root.level * 18 * root.scaleFactor
+        Repeater {
+            model: root.level
+            delegate: Rectangle {
+                required property int index
+                x: index * 18 * root.scaleFactor + 9 * root.scaleFactor
+                width: 1
+                anchors.top: guideContainer.top
+                anchors.bottom: guideContainer.bottom
+                color: root.guideColor
+            }
+        }
+    }
+
+    // ---- left direction stripe (leaves only) ----
+    Rectangle {
+        id: stripe
+        anchors { left: parent.left; top: parent.top; bottom: parent.bottom }
+        width: 3 * root.scaleFactor
+        color: root.dirColor
+        visible: root.hasMessage
+    }
+
+    // ---- content ----
     RowLayout {
         anchors.fill: parent
-        anchors.margins: root.hasMessage ? 8 * root.scaleFactor : 4 * root.scaleFactor
-        spacing: 4 * root.scaleFactor
+        anchors.leftMargin: root.rowIndent
+        anchors.rightMargin: 8 * root.scaleFactor
+        anchors.topMargin: 0
+        anchors.bottomMargin: 0
+        spacing: 6 * root.scaleFactor
 
-        // Indentation spacer
+        // expand / collapse chevron (fixed slot so segments align)
         Item {
-            width: root.level * 20 * root.scaleFactor
-            height: 1
-        }
+            Layout.preferredWidth: 16 * root.scaleFactor
+            Layout.alignment: Qt.AlignVCenter
+            Layout.fillHeight: true
 
-        // Expand/collapse arrow
-        Text {
-            text: root.expanded ? "\u25BC" : "\u25B6"
-            color: Material.accent
-            font.pixelSize: 10 * root.scaleFactor
-            visible: root.hasChildren
-            Layout.preferredWidth: visible ? 14 * root.scaleFactor : 0
-
+            Text {
+                id: chevron
+                anchors.centerIn: parent
+                text: "▶"
+                color: Material.foreground
+                opacity: 0.55
+                font.pixelSize: 9 * root.scaleFactor
+                visible: root.hasChildren
+                rotation: root.expanded ? 90 : 0
+                Behavior on rotation { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
+            }
             MouseArea {
                 anchors.fill: parent
-                anchors.margins: -4
+                anchors.margins: -6
+                enabled: root.hasChildren
                 onClicked: root.toggleExpand()
             }
         }
 
-        // Invisible spacer when no arrow (keep alignment)
-        Item {
-            width: 14 * root.scaleFactor
-            height: 1
-            visible: !root.hasChildren
-        }
-
         ColumnLayout {
+            id: contentCol
             Layout.fillWidth: true
-            Layout.fillHeight: true
-            spacing: root.hasMessage ? 4 * root.scaleFactor : 0
+            Layout.alignment: Qt.AlignVCenter
+            spacing: root.hasMessage ? 3 * root.scaleFactor : 0
 
+            // header row: segment name + badges + timestamp
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 6 * root.scaleFactor
@@ -133,63 +184,71 @@ Rectangle {
                     id: topicText
                     text: root.segment
                     color: root.hasMessage ? Material.accent : Material.foreground
+                    opacity: root.hasMessage ? 1.0 : 0.9
                     font.family: root.fontFamily
-                    font.pixelSize: 12
-                    font.bold: true
+                    font.pixelSize: 13
+                    font.bold: root.hasMessage || root.hasChildren
                     Layout.fillWidth: true
                     wrapMode: Text.NoWrap
                     elide: Text.ElideRight
                 }
 
-                // Subtopic count badge
+                // subtopic count pill (branches)
                 Rectangle {
                     visible: root.hasChildren && root.subtopicCount > 0
-                    color: Qt.darker(Material.background, 1.4)
-                    radius: 3
-                    implicitWidth: badgeText.implicitWidth + 8
-                    implicitHeight: badgeText.implicitHeight + 4
-
+                    color: Qt.rgba(Material.foreground.r, Material.foreground.g, Material.foreground.b, 0.10)
+                    radius: height / 2
+                    implicitWidth: countText.implicitWidth + 12
+                    implicitHeight: 16
+                    Layout.alignment: Qt.AlignVCenter
                     Text {
-                        id: badgeText
+                        id: countText
                         anchors.centerIn: parent
                         text: root.subtopicCount
                         color: Material.foreground
-                        font.pixelSize: 9
-                        opacity: 0.8
+                        opacity: 0.75
+                        font.pixelSize: 10
                     }
                 }
 
-                // Format badge
+                // format pill (JSON / XML) — tinted, not solid
                 Rectangle {
                     visible: root.hasMessage && root.detectedFormat !== "raw"
-                    color: root.detectedFormat === "json" ? Material.color(Material.Teal) : Material.color(Material.Purple)
-                    radius: 3
-                    implicitWidth: formatBadgeText.implicitWidth + 8
-                    implicitHeight: formatBadgeText.implicitHeight + 4
-
+                    property color tint: root.detectedFormat === "json"
+                                         ? Material.color(Material.Teal) : Material.color(Material.Purple)
+                    color: Qt.rgba(tint.r, tint.g, tint.b, 0.20)
+                    border.color: Qt.rgba(tint.r, tint.g, tint.b, 0.55)
+                    border.width: 1
+                    radius: height / 2
+                    implicitWidth: formatBadgeText.implicitWidth + 12
+                    implicitHeight: 16
+                    Layout.alignment: Qt.AlignVCenter
                     Text {
                         id: formatBadgeText
                         anchors.centerIn: parent
                         text: root.detectedFormat.toUpperCase()
-                        color: "white"
+                        color: parent.tint
                         font.pixelSize: 9
                         font.bold: true
                     }
                 }
 
-                // History count badge
+                // history count pill — tinted
                 Rectangle {
                     visible: root.hasMessage && root.historyCount > 0
-                    color: Material.color(Material.DeepOrange)
-                    radius: width / 2
-                    implicitWidth: Math.max(historyCountText.implicitWidth + 6, 18)
-                    implicitHeight: 18
-
+                    property color tint: Material.color(Material.DeepOrange)
+                    color: Qt.rgba(tint.r, tint.g, tint.b, 0.20)
+                    border.color: Qt.rgba(tint.r, tint.g, tint.b, 0.55)
+                    border.width: 1
+                    radius: height / 2
+                    implicitWidth: historyCountText.implicitWidth + 12
+                    implicitHeight: 16
+                    Layout.alignment: Qt.AlignVCenter
                     Text {
                         id: historyCountText
                         anchors.centerIn: parent
-                        text: root.historyCount
-                        color: "white"
+                        text: "↺ " + root.historyCount
+                        color: parent.tint
                         font.pixelSize: 9
                         font.bold: true
                     }
@@ -199,16 +258,18 @@ Rectangle {
                     text: root.displayedTimestamp
                     color: Material.foreground
                     font.pixelSize: 10
-                    opacity: 0.7
+                    opacity: 0.55
                     visible: root.hasMessage
+                    Layout.alignment: Qt.AlignVCenter
                 }
             }
 
-            // Message preview - only for nodes with messages
+            // message preview — monospace, dimmed
             Text {
                 id: messageText
                 text: root.formattedMessage
                 color: Material.foreground
+                opacity: 0.8
                 font.family: root.fontFamily
                 font.pixelSize: 11
                 Layout.fillWidth: true
@@ -218,14 +279,14 @@ Rectangle {
                 visible: root.hasMessage
             }
 
-            // History navigation row
+            // history navigation
             RowLayout {
                 Layout.fillWidth: true
                 visible: root.hasMessage && root.historyCount > 0
                 spacing: 4 * root.scaleFactor
 
                 Button {
-                    text: "\u25C0"
+                    text: "◀"
                     flat: true
                     font.pixelSize: 10
                     implicitWidth: 24 * root.scaleFactor
@@ -244,7 +305,7 @@ Rectangle {
                 }
 
                 Button {
-                    text: "\u25B6"
+                    text: "▶"
                     flat: true
                     font.pixelSize: 10
                     implicitWidth: 24 * root.scaleFactor
@@ -255,25 +316,30 @@ Rectangle {
             }
         }
 
-        // Delete retained button
+        // delete retained button — only on hover, flat & subtle
         Button {
             id: deleteButton
-            text: "\uD83D\uDDD1\uFE0F"
-            font.pixelSize: 14
-            implicitWidth: 36 * root.scaleFactor
-            implicitHeight: 36 * root.scaleFactor
-            Material.background: Material.Red
+            flat: true
+            text: "🗑️"
+            font.pixelSize: 13
+            implicitWidth: 30 * root.scaleFactor
+            implicitHeight: 30 * root.scaleFactor
+            Layout.alignment: Qt.AlignVCenter
+            opacity: (mouseArea.containsMouse || hovered) ? 1 : 0
             enabled: root.mqttConnected && root.hasMessage
             visible: root.mqttConnected && root.hasMessage
             onClicked: root.deleteRetainedClicked(root.topic)
             ToolTip.visible: hovered
             ToolTip.text: "Delete retained message"
+            Behavior on opacity { NumberAnimation { duration: 120 } }
         }
     }
 
     MouseArea {
+        id: mouseArea
         anchors.fill: parent
-        anchors.rightMargin: deleteButton.visible ? deleteButton.width + 16 * root.scaleFactor : 0
+        anchors.rightMargin: deleteButton.visible ? deleteButton.width + 12 * root.scaleFactor : 0
+        hoverEnabled: true
         acceptedButtons: Qt.LeftButton | Qt.RightButton
         onClicked: function(mouse) {
             if (mouse.button === Qt.RightButton) {
@@ -290,19 +356,18 @@ Rectangle {
         }
     }
 
-    // Flash overlay for new message highlight
+    // Flash overlay for new message highlight — subtle accent glow
     Rectangle {
         id: flashOverlay
         anchors.fill: parent
-        color: Material.color(Material.Amber)
+        color: Material.accent
         opacity: 0
         z: 10
-        radius: 0
 
         SequentialAnimation {
             id: flashAnimation
-            NumberAnimation { target: flashOverlay; property: "opacity"; from: 0; to: 0.4; duration: 100 }
-            NumberAnimation { target: flashOverlay; property: "opacity"; from: 0.4; to: 0; duration: 400 }
+            NumberAnimation { target: flashOverlay; property: "opacity"; from: 0; to: 0.28; duration: 90 }
+            NumberAnimation { target: flashOverlay; property: "opacity"; from: 0.28; to: 0; duration: 550; easing.type: Easing.OutCubic }
         }
     }
 

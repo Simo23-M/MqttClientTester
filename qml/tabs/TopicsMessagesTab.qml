@@ -537,12 +537,15 @@ RowLayout {
                             hasMessage: msgWrapper.model.hasMessage === true
                             subtopicCount: msgWrapper.model.subtopicCount || 0
                             updateTick: msgWrapper.model.updateTick || 0
+                            selected: msgWrapper.ListView.isCurrentItem
 
                             onToggleExpand: {
+                                mqttTreeView.currentIndex = msgWrapper.index
                                 root.mqttTreeModel.toggleExpanded(msgWrapper.index)
                             }
 
                             onClicked: {
+                                mqttTreeView.currentIndex = msgWrapper.index
                                 if (msgWrapper.model.hasMessage) {
                                     var history = []
                                     if (historyJson && historyJson !== "") {

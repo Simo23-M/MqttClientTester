@@ -184,19 +184,40 @@ RowLayout {
                                 required property int index
 
                                 width: presetListView.width
-                                height: 70 * root.scaleFactor
-                                color: presetDelegate.index % 2 === 0 ? Material.background : Qt.darker(Material.background, 1.1)
-                                border.color: Material.accent
-                                border.width: 1
+                                height: 58 * root.scaleFactor
+                                color: presetHover.hovered
+                                       ? Qt.rgba(Material.accent.r, Material.accent.g, Material.accent.b, 0.08)
+                                       : "transparent"
+                                Behavior on color { ColorAnimation { duration: 90 } }
+
+                                HoverHandler { id: presetHover }
+
+                                // hairline separator
+                                Rectangle {
+                                    anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                                    height: 1
+                                    color: Qt.rgba(Material.foreground.r, Material.foreground.g, Material.foreground.b, 0.05)
+                                }
+
+                                // left accent stripe
+                                Rectangle {
+                                    anchors { left: parent.left; top: parent.top; bottom: parent.bottom }
+                                    width: 3 * root.scaleFactor
+                                    color: Material.accent
+                                }
 
                                 RowLayout {
                                     anchors.fill: parent
-                                    anchors.margins: 10 * root.scaleFactor
-                                    spacing: 10 * root.scaleFactor
+                                    anchors.leftMargin: 12 * root.scaleFactor
+                                    anchors.rightMargin: 8 * root.scaleFactor
+                                    anchors.topMargin: 6 * root.scaleFactor
+                                    anchors.bottomMargin: 6 * root.scaleFactor
+                                    spacing: 8 * root.scaleFactor
 
                                     ColumnLayout {
                                         Layout.fillWidth: true
-                                        spacing: 5 * root.scaleFactor
+                                        Layout.alignment: Qt.AlignVCenter
+                                        spacing: 2 * root.scaleFactor
 
                                         Text {
                                             text: presetDelegate.model.name
@@ -205,21 +226,24 @@ RowLayout {
                                             font.pixelSize: 13
                                             font.bold: true
                                             Layout.fillWidth: true
+                                            elide: Text.ElideRight
                                         }
 
                                         Text {
                                             text: "Click to view details"
                                             color: Material.foreground
                                             font.pixelSize: 10
-                                            opacity: 0.6
+                                            opacity: 0.55
                                         }
                                     }
 
                                     Button {
                                         text: "Add to Queue"
-                                        Material.background: Material.Green
+                                        flat: true
+                                        Material.foreground: Material.color(Material.Green)
                                         font.pixelSize: 11
                                         implicitHeight: 30 * root.scaleFactor
+                                        Layout.alignment: Qt.AlignVCenter
                                         onClicked: {
                                             root.commandQueue.addPresetToQueue(presetDelegate.model.name)
                                             root.updateQueueListRequested()
@@ -227,10 +251,12 @@ RowLayout {
                                     }
 
                                     Button {
-                                        text: "Execute Now"
-                                        Material.background: Material.Purple
+                                        text: "Execute"
+                                        flat: true
+                                        Material.foreground: Material.accent
                                         font.pixelSize: 11
                                         implicitHeight: 30 * root.scaleFactor
+                                        Layout.alignment: Qt.AlignVCenter
                                         enabled: root.mqttClient && root.mqttClient.connected
                                         onClicked: {
                                             root.commandQueue.addPresetToQueue(presetDelegate.model.name)
@@ -453,93 +479,139 @@ RowLayout {
                         id: queueDelegate
                         required property var model
                         required property int index
+                        readonly property bool running: root.commandQueue
+                                                         && queueDelegate.index === root.commandQueue.currentIndex
+                                                         && root.commandQueue.isRunning
+                        readonly property bool isScript: queueDelegate.model.commandType === 1
+                        readonly property color typeColor: queueDelegate.isScript ? Material.color(Material.Orange)
+                                                                                   : Material.accent
 
                         width: queueListView.width
-                        height: 90 * root.scaleFactor
-                        color: root.commandQueue && queueDelegate.index === root.commandQueue.currentIndex && root.commandQueue.isRunning ?
-                               Qt.darker(Material.color(Material.Green), 1.8) :
-                               queueDelegate.index % 2 === 0 ? Material.background : Qt.darker(Material.background, 1.1)
-                        border.color: root.commandQueue && queueDelegate.index === root.commandQueue.currentIndex && root.commandQueue.isRunning ?
-                                     Material.color(Material.Green) : Material.accent
-                        border.width: root.commandQueue && queueDelegate.index === root.commandQueue.currentIndex && root.commandQueue.isRunning ? 2 : 1
+                        height: 84 * root.scaleFactor
+                        color: queueDelegate.running
+                               ? Qt.rgba(Material.color(Material.Green).r, Material.color(Material.Green).g,
+                                         Material.color(Material.Green).b, 0.16)
+                               : (queueHover.hovered
+                                  ? Qt.rgba(Material.accent.r, Material.accent.g, Material.accent.b, 0.08)
+                                  : "transparent")
+                        Behavior on color { ColorAnimation { duration: 90 } }
+
+                        HoverHandler { id: queueHover }
+
+                        // hairline separator
+                        Rectangle {
+                            anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                            height: 1
+                            color: Qt.rgba(Material.foreground.r, Material.foreground.g, Material.foreground.b, 0.05)
+                        }
+
+                        // left stripe: running / script / publish
+                        Rectangle {
+                            anchors { left: parent.left; top: parent.top; bottom: parent.bottom }
+                            width: 3 * root.scaleFactor
+                            color: queueDelegate.running ? Material.color(Material.Green) : queueDelegate.typeColor
+                        }
 
                         RowLayout {
                             anchors.fill: parent
-                            anchors.margins: 10 * root.scaleFactor
+                            anchors.leftMargin: 12 * root.scaleFactor
+                            anchors.rightMargin: 8 * root.scaleFactor
+                            anchors.topMargin: 8 * root.scaleFactor
+                            anchors.bottomMargin: 8 * root.scaleFactor
                             spacing: 10 * root.scaleFactor
 
                             // Position indicator
                             Rectangle {
-                                implicitWidth: 35 * root.scaleFactor
-                                implicitHeight: 35 * root.scaleFactor
-                                radius: 17.5 * root.scaleFactor
-                                color: Material.accent
+                                implicitWidth: 30 * root.scaleFactor
+                                implicitHeight: 30 * root.scaleFactor
+                                radius: height / 2
+                                Layout.alignment: Qt.AlignVCenter
+                                color: queueDelegate.running
+                                       ? Material.color(Material.Green)
+                                       : Qt.rgba(Material.accent.r, Material.accent.g, Material.accent.b, 0.18)
 
                                 Label {
                                     text: (queueDelegate.index + 1).toString()
                                     font.bold: true
-                                    font.pixelSize: 14
-                                    color: "white"
+                                    font.pixelSize: 13
+                                    color: queueDelegate.running ? "white" : Material.accent
                                     anchors.centerIn: parent
                                 }
                             }
 
                             ColumnLayout {
                                 Layout.fillWidth: true
-                                spacing: 4 * root.scaleFactor
+                                Layout.alignment: Qt.AlignVCenter
+                                spacing: 3 * root.scaleFactor
 
-                                Text {
-                                    text: queueDelegate.model.name
-                                    color: queueDelegate.model.commandType === 1
-                                           ? Material.color(Material.Orange) : Material.accent
-                                    font.family: root.fontFamily
-                                    font.pixelSize: 12
-                                    font.bold: true
+                                RowLayout {
                                     Layout.fillWidth: true
+                                    spacing: 6 * root.scaleFactor
+
+                                    Text {
+                                        text: queueDelegate.model.name
+                                        color: queueDelegate.typeColor
+                                        font.family: root.fontFamily
+                                        font.pixelSize: 12
+                                        font.bold: true
+                                        Layout.fillWidth: true
+                                        elide: Text.ElideRight
+                                    }
+
+                                    // type pill
+                                    Rectangle {
+                                        color: Qt.rgba(queueDelegate.typeColor.r, queueDelegate.typeColor.g,
+                                                       queueDelegate.typeColor.b, 0.20)
+                                        border.color: Qt.rgba(queueDelegate.typeColor.r, queueDelegate.typeColor.g,
+                                                              queueDelegate.typeColor.b, 0.55)
+                                        border.width: 1
+                                        radius: height / 2
+                                        implicitWidth: typeText.implicitWidth + 12
+                                        implicitHeight: 16
+                                        Layout.alignment: Qt.AlignVCenter
+                                        Text {
+                                            id: typeText
+                                            anchors.centerIn: parent
+                                            text: queueDelegate.isScript ? "SCRIPT" : "PUBLISH"
+                                            color: queueDelegate.typeColor
+                                            font.pixelSize: 9
+                                            font.bold: true
+                                        }
+                                    }
                                 }
 
-                                // Publish command info
                                 Text {
-                                    visible: queueDelegate.model.commandType !== 1
-                                    text: "Topic: " + queueDelegate.model.topic
+                                    text: queueDelegate.isScript
+                                          ? "Script: " + queueDelegate.model.scriptPath
+                                          : "Topic: " + queueDelegate.model.topic
                                     color: Material.foreground
+                                    opacity: 0.7
+                                    font.family: root.fontFamily
                                     font.pixelSize: 10
-                                    opacity: 0.8
-                                    Layout.fillWidth: true
-                                    elide: Text.ElideRight
-                                }
-
-                                // Script command info
-                                Text {
-                                    visible: queueDelegate.model.commandType === 1
-                                    text: "Script: " + queueDelegate.model.scriptPath
-                                    color: Material.color(Material.Orange)
-                                    font.pixelSize: 10
-                                    opacity: 0.9
                                     Layout.fillWidth: true
                                     elide: Text.ElideRight
                                 }
 
                                 RowLayout {
-                                    spacing: 10 * root.scaleFactor
+                                    spacing: 8 * root.scaleFactor
 
                                     Text {
-                                        visible: queueDelegate.model.commandType !== 1
-                                        text: "QoS: " + queueDelegate.model.qos
+                                        visible: !queueDelegate.isScript
+                                        text: "QoS " + queueDelegate.model.qos
                                         color: Material.foreground
                                         font.pixelSize: 9
-                                        opacity: 0.6
+                                        opacity: 0.55
                                     }
 
                                     Text {
-                                        text: "Delay: " + queueDelegate.model.delay + "ms"
+                                        text: queueDelegate.model.delay + "ms"
                                         color: Material.foreground
                                         font.pixelSize: 9
-                                        opacity: 0.6
+                                        opacity: 0.55
                                     }
 
                                     Text {
-                                        visible: queueDelegate.model.commandType !== 1 && queueDelegate.model.retain
+                                        visible: !queueDelegate.isScript && queueDelegate.model.retain
                                         text: "RETAIN"
                                         color: Material.color(Material.Orange)
                                         font.pixelSize: 9
@@ -547,26 +619,31 @@ RowLayout {
                                     }
 
                                     Text {
-                                        visible: queueDelegate.model.commandType === 1
-                                                 && queueDelegate.model.scriptArgs !== ""
+                                        visible: queueDelegate.isScript && queueDelegate.model.scriptArgs !== ""
                                         text: "Args: " + queueDelegate.model.scriptArgs
                                         color: Material.foreground
                                         font.pixelSize: 9
-                                        opacity: 0.6
+                                        opacity: 0.55
+                                        Layout.fillWidth: true
                                         elide: Text.ElideRight
                                     }
                                 }
                             }
 
-                            ColumnLayout {
-                                spacing: 4 * root.scaleFactor
+                            // reorder + delete actions (flat, compact)
+                            RowLayout {
+                                Layout.alignment: Qt.AlignVCenter
+                                spacing: 2 * root.scaleFactor
 
                                 Button {
-                                    text: "Up"
+                                    text: "▲"
+                                    flat: true
                                     enabled: queueDelegate.index > 0 && root.commandQueue && !root.commandQueue.isRunning
-                                    implicitWidth: 50 * root.scaleFactor
-                                    implicitHeight: 32 * root.scaleFactor
+                                    implicitWidth: 30 * root.scaleFactor
+                                    implicitHeight: 30 * root.scaleFactor
                                     font.pixelSize: 11
+                                    ToolTip.visible: hovered
+                                    ToolTip.text: "Move up"
                                     onClicked: {
                                         root.commandQueue.moveCommandUp(queueDelegate.index)
                                         root.updateQueueListRequested()
@@ -574,28 +651,34 @@ RowLayout {
                                 }
 
                                 Button {
-                                    text: "Down"
+                                    text: "▼"
+                                    flat: true
                                     enabled: queueDelegate.index < root.queueListModel.count - 1 && root.commandQueue && !root.commandQueue.isRunning
-                                    implicitWidth: 50 * root.scaleFactor
-                                    implicitHeight: 32 * root.scaleFactor
+                                    implicitWidth: 30 * root.scaleFactor
+                                    implicitHeight: 30 * root.scaleFactor
                                     font.pixelSize: 11
+                                    ToolTip.visible: hovered
+                                    ToolTip.text: "Move down"
                                     onClicked: {
                                         root.commandQueue.moveCommandDown(queueDelegate.index)
                                         root.updateQueueListRequested()
                                     }
                                 }
-                            }
 
-                            Button {
-                                text: "Del"
-                                Material.background: Material.Red
-                                enabled: root.commandQueue && !root.commandQueue.isRunning
-                                implicitWidth: 45 * root.scaleFactor
-                                implicitHeight: 45 * root.scaleFactor
-                                font.pixelSize: 11
-                                onClicked: {
-                                    root.commandQueue.removeCommandFromQueue(queueDelegate.index)
-                                    root.updateQueueListRequested()
+                                Button {
+                                    text: "🗑️"
+                                    flat: true
+                                    Material.foreground: Material.color(Material.Red)
+                                    enabled: root.commandQueue && !root.commandQueue.isRunning
+                                    implicitWidth: 30 * root.scaleFactor
+                                    implicitHeight: 30 * root.scaleFactor
+                                    font.pixelSize: 12
+                                    ToolTip.visible: hovered
+                                    ToolTip.text: "Remove from queue"
+                                    onClicked: {
+                                        root.commandQueue.removeCommandFromQueue(queueDelegate.index)
+                                        root.updateQueueListRequested()
+                                    }
                                 }
                             }
                         }

@@ -266,33 +266,59 @@ RowLayout {
                         id: subDelegate
                         required property var model
                         required property int index
+                        readonly property bool wildcard: subDelegate.model.topic.includes('+')
+                                                          || subDelegate.model.topic.includes('#')
 
                         width: activeSubscriptionsView.width
-                        height: 60 * root.scaleFactor
-                        color: subDelegate.index % 2 === 0 ? Material.background : Qt.darker(Material.background, 1.1)
-                        border.color: Material.accent
-                        border.width: 1
+                        height: 54 * root.scaleFactor
+                        // flat background: hover only, no border, no zebra
+                        color: subHover.hovered
+                               ? Qt.rgba(Material.accent.r, Material.accent.g, Material.accent.b, 0.08)
+                               : "transparent"
+                        Behavior on color { ColorAnimation { duration: 90 } }
+
+                        HoverHandler { id: subHover }
+
+                        // hairline separator
+                        Rectangle {
+                            anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                            height: 1
+                            color: Qt.rgba(Material.foreground.r, Material.foreground.g, Material.foreground.b, 0.05)
+                        }
+
+                        // left stripe: wildcard vs exact topic
+                        Rectangle {
+                            anchors { left: parent.left; top: parent.top; bottom: parent.bottom }
+                            width: 3 * root.scaleFactor
+                            color: subDelegate.wildcard ? Material.color(Material.Purple)
+                                                        : Material.color(Material.Blue)
+                        }
 
                         RowLayout {
                             anchors.fill: parent
-                            anchors.margins: 10 * root.scaleFactor
+                            anchors.leftMargin: 12 * root.scaleFactor
+                            anchors.rightMargin: 8 * root.scaleFactor
+                            anchors.topMargin: 6 * root.scaleFactor
+                            anchors.bottomMargin: 6 * root.scaleFactor
                             spacing: 10 * root.scaleFactor
 
                             ColumnLayout {
                                 Layout.fillWidth: true
-                                spacing: 5 * root.scaleFactor
+                                Layout.alignment: Qt.AlignVCenter
+                                spacing: 3 * root.scaleFactor
 
                                 RowLayout {
                                     Layout.fillWidth: true
+                                    spacing: 6 * root.scaleFactor
 
                                     Text {
                                         text: subDelegate.model.topic
                                         color: Material.accent
                                         font.family: root.fontFamily
-                                        font.pixelSize: 12
+                                        font.pixelSize: 13
                                         font.bold: true
                                         Layout.fillWidth: true
-                                        wrapMode: Text.Wrap
+                                        elide: Text.ElideRight
                                     }
 
                                     QosBadge {
@@ -301,40 +327,29 @@ RowLayout {
                                     }
                                 }
 
-                                RowLayout {
+                                Text {
+                                    text: "Subscribed at " + subDelegate.model.timestamp
+                                    color: Material.foreground
+                                    font.pixelSize: 10
+                                    opacity: 0.55
                                     Layout.fillWidth: true
-
-                                    Text {
-                                        text: "Subscribed at: " + subDelegate.model.timestamp
-                                        color: Material.foreground
-                                        font.pixelSize: 10
-                                        opacity: 0.7
-                                        Layout.fillWidth: true
-                                    }
-
-                                    Button {
-                                        text: "Unsubscribe"
-                                        Material.background: Material.Red
-                                        enabled: root.mqttClient && root.mqttClient.connected
-                                        font.pixelSize: 10
-                                        implicitHeight: 25 * root.scaleFactor
-                                        implicitWidth: 80 * root.scaleFactor
-                                        onClicked: {
-                                            root.mqttClient.unsubscribe(subDelegate.model.topic)
-                                            root.activeSubscriptionsModel.remove(subDelegate.index)
-                                        }
-                                    }
+                                    elide: Text.ElideRight
                                 }
                             }
-                        }
 
-                        // Visual indicator for wildcard topics
-                        Rectangle {
-                            width: 4 * root.scaleFactor
-                            height: parent.height
-                            anchors.left: parent.left
-                            color: subDelegate.model.topic.includes('+') || subDelegate.model.topic.includes('#') ?
-                                   Material.color(Material.Purple) : Material.color(Material.Blue)
+                            Button {
+                                text: "Unsubscribe"
+                                flat: true
+                                Material.foreground: Material.color(Material.Red)
+                                enabled: root.mqttClient && root.mqttClient.connected
+                                font.pixelSize: 11
+                                implicitHeight: 30 * root.scaleFactor
+                                Layout.alignment: Qt.AlignVCenter
+                                onClicked: {
+                                    root.mqttClient.unsubscribe(subDelegate.model.topic)
+                                    root.activeSubscriptionsModel.remove(subDelegate.index)
+                                }
+                            }
                         }
                     }
 
