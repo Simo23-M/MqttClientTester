@@ -338,6 +338,17 @@ void CommandQueue::moveCommandDown(int index)
     emitLog(QString("Moved command down: %1").arg(m_commandList[index + 1].name));
 }
 
+void CommandQueue::moveCommand(int from, int to)
+{
+    if (from < 0 || from >= m_commandList.size() ||
+        to < 0 || to >= m_commandList.size() || from == to) {
+        return;
+    }
+
+    m_commandList.move(from, to);
+    emitLog(QString("Moved command from position %1 to %2").arg(from + 1).arg(to + 1));
+}
+
 void CommandQueue::startQueue()
 {
     if (m_commandList.isEmpty()) {

@@ -74,6 +74,7 @@ public slots:
     Q_INVOKABLE void clearQueue();
     Q_INVOKABLE void moveCommandUp(int index);
     Q_INVOKABLE void moveCommandDown(int index);
+    Q_INVOKABLE void moveCommand(int from, int to);
 
     // Execution control
     Q_INVOKABLE void startQueue();

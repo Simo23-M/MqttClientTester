@@ -474,6 +474,8 @@ RowLayout {
                 ListView {
                     id: queueListView
                     model: root.queueListModel
+                    property int dragFromIndex: -1
+                    property int dragToIndex: -1
 
                     delegate: Rectangle {
                         id: queueDelegate
@@ -488,12 +490,19 @@ RowLayout {
 
                         width: queueListView.width
                         height: 84 * root.scaleFactor
+                        opacity: (queueListView.dragFromIndex === queueDelegate.index && queueListView.dragFromIndex !== -1) ? 0.35 : 1.0
+                        Behavior on opacity { NumberAnimation { duration: 80 } }
+
                         color: queueDelegate.running
                                ? Qt.rgba(Material.color(Material.Green).r, Material.color(Material.Green).g,
                                          Material.color(Material.Green).b, 0.16)
-                               : (queueHover.hovered
-                                  ? Qt.rgba(Material.accent.r, Material.accent.g, Material.accent.b, 0.08)
-                                  : "transparent")
+                               : (queueListView.dragToIndex === queueDelegate.index
+                                  && queueListView.dragFromIndex !== -1
+                                  && queueListView.dragFromIndex !== queueDelegate.index)
+                                 ? Qt.rgba(Material.accent.r, Material.accent.g, Material.accent.b, 0.22)
+                                 : (queueHover.hovered
+                                    ? Qt.rgba(Material.accent.r, Material.accent.g, Material.accent.b, 0.08)
+                                    : "transparent")
                         Behavior on color { ColorAnimation { duration: 90 } }
 
                         HoverHandler { id: queueHover }
@@ -630,38 +639,62 @@ RowLayout {
                                 }
                             }
 
-                            // reorder + delete actions (flat, compact)
+                            // drag handle + delete
                             RowLayout {
                                 Layout.alignment: Qt.AlignVCenter
-                                spacing: 2 * root.scaleFactor
+                                spacing: 4 * root.scaleFactor
 
-                                Button {
-                                    text: "▲"
-                                    flat: true
-                                    enabled: queueDelegate.index > 0 && root.commandQueue && !root.commandQueue.isRunning
-                                    implicitWidth: 30 * root.scaleFactor
-                                    implicitHeight: 30 * root.scaleFactor
-                                    font.pixelSize: 11
-                                    ToolTip.visible: hovered
-                                    ToolTip.text: "Move up"
-                                    onClicked: {
-                                        root.commandQueue.moveCommandUp(queueDelegate.index)
-                                        root.updateQueueListRequested()
+                                Item {
+                                    id: gripHandle
+                                    implicitWidth: 28 * root.scaleFactor
+                                    implicitHeight: 28 * root.scaleFactor
+                                    Layout.alignment: Qt.AlignVCenter
+                                    visible: root.commandQueue && !root.commandQueue.isRunning
+
+                                    HoverHandler {
+                                        cursorShape: dragHandler.active ? Qt.ClosedHandCursor : Qt.OpenHandCursor
                                     }
-                                }
 
-                                Button {
-                                    text: "▼"
-                                    flat: true
-                                    enabled: queueDelegate.index < root.queueListModel.count - 1 && root.commandQueue && !root.commandQueue.isRunning
-                                    implicitWidth: 30 * root.scaleFactor
-                                    implicitHeight: 30 * root.scaleFactor
-                                    font.pixelSize: 11
-                                    ToolTip.visible: hovered
-                                    ToolTip.text: "Move down"
-                                    onClicked: {
-                                        root.commandQueue.moveCommandDown(queueDelegate.index)
-                                        root.updateQueueListRequested()
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: "⠿"
+                                        color: Material.foreground
+                                        opacity: 0.45
+                                        font.pixelSize: 16
+                                    }
+
+                                    DragHandler {
+                                        id: dragHandler
+                                        target: null
+                                        enabled: root.commandQueue && !root.commandQueue.isRunning
+
+                                        onActiveChanged: {
+                                            if (active) {
+                                                queueListView.dragFromIndex = queueDelegate.index
+                                                queueListView.dragToIndex = queueDelegate.index
+                                            } else {
+                                                var from = queueListView.dragFromIndex
+                                                var to = queueListView.dragToIndex
+                                                queueListView.dragFromIndex = -1
+                                                queueListView.dragToIndex = -1
+                                                if (from !== -1 && to !== -1 && from !== to) {
+                                                    root.commandQueue.moveCommand(from, to)
+                                                    root.updateQueueListRequested()
+                                                }
+                                            }
+                                        }
+
+                                        onCentroidChanged: {
+                                            if (!active) return
+                                            var viewPos = queueListView.mapFromItem(
+                                                null,
+                                                centroid.scenePosition.x,
+                                                centroid.scenePosition.y)
+                                            var idx = queueListView.indexAt(
+                                                viewPos.x + queueListView.contentX,
+                                                viewPos.y + queueListView.contentY)
+                                            if (idx !== -1) queueListView.dragToIndex = idx
+                                        }
                                     }
                                 }
 
