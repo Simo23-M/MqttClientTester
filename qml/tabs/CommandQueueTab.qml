@@ -639,79 +639,76 @@ RowLayout {
                                 }
                             }
 
-                            // drag handle + delete
-                            RowLayout {
+                            // drag handle
+                            Item {
+                                id: gripHandle
+                                implicitWidth: 28 * root.scaleFactor
+                                implicitHeight: 28 * root.scaleFactor
                                 Layout.alignment: Qt.AlignVCenter
-                                spacing: 4 * root.scaleFactor
+                                visible: root.commandQueue && !root.commandQueue.isRunning
 
-                                Item {
-                                    id: gripHandle
-                                    implicitWidth: 28 * root.scaleFactor
-                                    implicitHeight: 28 * root.scaleFactor
-                                    Layout.alignment: Qt.AlignVCenter
-                                    visible: root.commandQueue && !root.commandQueue.isRunning
-
-                                    HoverHandler {
-                                        cursorShape: dragHandler.active ? Qt.ClosedHandCursor : Qt.OpenHandCursor
-                                    }
-
-                                    Text {
-                                        anchors.centerIn: parent
-                                        text: "⠿"
-                                        color: Material.foreground
-                                        opacity: 0.45
-                                        font.pixelSize: 16
-                                    }
-
-                                    DragHandler {
-                                        id: dragHandler
-                                        target: null
-                                        enabled: root.commandQueue && !root.commandQueue.isRunning
-
-                                        onActiveChanged: {
-                                            if (active) {
-                                                queueListView.dragFromIndex = queueDelegate.index
-                                                queueListView.dragToIndex = queueDelegate.index
-                                            } else {
-                                                var from = queueListView.dragFromIndex
-                                                var to = queueListView.dragToIndex
-                                                queueListView.dragFromIndex = -1
-                                                queueListView.dragToIndex = -1
-                                                if (from !== -1 && to !== -1 && from !== to) {
-                                                    root.commandQueue.moveCommand(from, to)
-                                                    root.updateQueueListRequested()
-                                                }
-                                            }
-                                        }
-
-                                        onCentroidChanged: {
-                                            if (!active) return
-                                            var viewPos = queueListView.mapFromItem(
-                                                null,
-                                                centroid.scenePosition.x,
-                                                centroid.scenePosition.y)
-                                            var idx = queueListView.indexAt(
-                                                viewPos.x + queueListView.contentX,
-                                                viewPos.y + queueListView.contentY)
-                                            if (idx !== -1) queueListView.dragToIndex = idx
-                                        }
-                                    }
+                                HoverHandler {
+                                    cursorShape: dragHandler.active ? Qt.ClosedHandCursor : Qt.OpenHandCursor
                                 }
 
-                                Button {
-                                    text: "🗑️"
-                                    flat: true
-                                    Material.foreground: Material.color(Material.Red)
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "⠿"
+                                    color: Material.foreground
+                                    opacity: 0.45
+                                    font.pixelSize: 16
+                                }
+
+                                DragHandler {
+                                    id: dragHandler
+                                    target: null
                                     enabled: root.commandQueue && !root.commandQueue.isRunning
-                                    implicitWidth: 30 * root.scaleFactor
-                                    implicitHeight: 30 * root.scaleFactor
-                                    font.pixelSize: 12
-                                    ToolTip.visible: hovered
-                                    ToolTip.text: "Remove from queue"
-                                    onClicked: {
-                                        root.commandQueue.removeCommandFromQueue(queueDelegate.index)
-                                        root.updateQueueListRequested()
+
+                                    onActiveChanged: {
+                                        if (active) {
+                                            queueListView.dragFromIndex = queueDelegate.index
+                                            queueListView.dragToIndex = queueDelegate.index
+                                        } else {
+                                            var from = queueListView.dragFromIndex
+                                            var to = queueListView.dragToIndex
+                                            queueListView.dragFromIndex = -1
+                                            queueListView.dragToIndex = -1
+                                            if (from !== -1 && to !== -1 && from !== to) {
+                                                root.commandQueue.moveCommand(from, to)
+                                                root.updateQueueListRequested()
+                                            }
+                                        }
                                     }
+
+                                    onCentroidChanged: {
+                                        if (!active) return
+                                        var viewPos = queueListView.mapFromItem(
+                                            null,
+                                            centroid.scenePosition.x,
+                                            centroid.scenePosition.y)
+                                        var idx = queueListView.indexAt(
+                                            viewPos.x + queueListView.contentX,
+                                            viewPos.y + queueListView.contentY)
+                                        if (idx !== -1) queueListView.dragToIndex = idx
+                                    }
+                                }
+                            }
+
+                            // delete
+                            Button {
+                                text: "✕"
+                                flat: true
+                                Material.foreground: Material.color(Material.Red)
+                                enabled: root.commandQueue && !root.commandQueue.isRunning
+                                implicitWidth: 30 * root.scaleFactor
+                                implicitHeight: 30 * root.scaleFactor
+                                Layout.alignment: Qt.AlignVCenter
+                                font.pixelSize: 12
+                                ToolTip.visible: hovered
+                                ToolTip.text: "Remove from queue"
+                                onClicked: {
+                                    root.commandQueue.removeCommandFromQueue(queueDelegate.index)
+                                    root.updateQueueListRequested()
                                 }
                             }
                         }
