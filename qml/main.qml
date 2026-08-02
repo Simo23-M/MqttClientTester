@@ -196,13 +196,6 @@ ApplicationWindow {
                     mqttTreeModel.addMessage(topic, message, false)
                     commandQueue.checkTriggers(topic, message, "published")
                 }
-                onMessageClicked: function(topic, message, timestamp, history) {
-                    messageDetailDialog.topic = topic
-                    messageDetailDialog.message = message
-                    messageDetailDialog.timestamp = timestamp
-                    messageDetailDialog.history = history
-                    messageDetailDialog.open()
-                }
                 onDeleteRetainedRequested: function(topic) {
                     mqttClient.publish(topic, "", 0, true)
                     mqttTreeModel.removeByTopic(topic)
@@ -253,21 +246,6 @@ ApplicationWindow {
     }
 
     // Dialogs
-    MessageDetailDialog {
-        id: messageDetailDialog
-        scaleFactor: window.k
-        fontFamily: window.fontChosed
-        mqttConnected: mqttClient.connected
-        onClearHistoryRequested: function(topic) {
-            mqttTreeModel.clearHistory(topic)
-        }
-        onDeleteRetainedRequested: function(topic) {
-            mqttClient.publish(topic, "", 0, true)
-            mqttTreeModel.removeByTopic(topic)
-            toastNotification.show("Retained message deleted: " + topic, "success")
-        }
-    }
-
     PresetDetailDialog {
         id: presetDetailDialog
         scaleFactor: window.k

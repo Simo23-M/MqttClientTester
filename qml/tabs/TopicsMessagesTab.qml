@@ -21,7 +21,6 @@ RowLayout {
     signal subscribeRequested(string topic, int qos)
     signal unsubscribeRequested(string topic)
     signal publishRequested(string topic, string message, int qos, bool retain)
-    signal messageClicked(string topic, string message, string timestamp, var history)
     signal deleteRetainedRequested(string topic)
     signal useAsPublishTopic(string topic)
     signal useAsSubscribeTopic(string topic)
@@ -546,17 +545,6 @@ RowLayout {
 
                             onClicked: {
                                 mqttTreeView.currentIndex = msgWrapper.index
-                                if (msgWrapper.model.hasMessage) {
-                                    var history = []
-                                    if (historyJson && historyJson !== "") {
-                                        try {
-                                            history = JSON.parse(historyJson)
-                                        } catch (e) {
-                                            history = []
-                                        }
-                                    }
-                                    root.messageClicked(msgWrapper.model.topic, msgWrapper.model.message, msgWrapper.model.timestamp, history)
-                                }
                             }
 
                             onDeleteRetainedClicked: function(topicToDelete) {
@@ -571,6 +559,352 @@ RowLayout {
                                 root.subscribeTopicField.text = t
                             }
                         }
+                }
+            }
+        }
+    }
+
+    // Right panel - Last Message Detail
+    GroupBox {
+        id: lastMessagePanel
+        title: "Message Details"
+        Layout.preferredWidth: 300 * root.scaleFactor
+        Layout.fillHeight: true
+        Material.elevation: 2
+
+        readonly property bool liveHasMessage: mqttTreeView.currentItem
+            ? (mqttTreeView.currentItem.model.hasMessage === true) : false
+        readonly property string liveTopic: mqttTreeView.currentItem
+            ? (mqttTreeView.currentItem.model.topic ?? "") : ""
+        readonly property string liveMessage: mqttTreeView.currentItem
+            ? (mqttTreeView.currentItem.model.message ?? "") : ""
+        readonly property string liveTimestamp: mqttTreeView.currentItem
+            ? (mqttTreeView.currentItem.model.timestamp ?? "") : ""
+        readonly property string liveHistoryJson: mqttTreeView.currentItem
+            ? (mqttTreeView.currentItem.model.historyJson ?? "") : ""
+        readonly property string detectedFormat: liveMessage.length > 0
+            ? Formatter.detectFormat(liveMessage) : "raw"
+        property bool showFormatted: true
+        readonly property string displayMessage: {
+            if (!lastMessagePanel.liveMessage) return ""
+            if (lastMessagePanel.showFormatted && lastMessagePanel.detectedFormat !== "raw") {
+                var r = Formatter.beautify(lastMessagePanel.liveMessage, lastMessagePanel.detectedFormat)
+                if (typeof r === "object" && r.error) return lastMessagePanel.liveMessage
+                return r
+            }
+            return lastMessagePanel.liveMessage
+        }
+        readonly property var liveHistory: {
+            var json = lastMessagePanel.liveHistoryJson
+            if (!json || json === "") return []
+            try { return JSON.parse(json) } catch(e) { return [] }
+        }
+
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 8 * root.scaleFactor
+
+            // Empty state — no topic selected or no message
+            EmptyStateView {
+                visible: !lastMessagePanel.liveHasMessage
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                icon: "📨"
+                title: "No message"
+                subtitle: "Click a topic in the tree to view its last message"
+                scaleFactor: root.scaleFactor
+            }
+
+            // Content
+            ColumnLayout {
+                visible: lastMessagePanel.liveHasMessage
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                spacing: 6 * root.scaleFactor
+
+                // Topic
+                Rectangle {
+                    Layout.fillWidth: true
+                    implicitHeight: 36 * root.scaleFactor
+                    color: Qt.darker(Material.backgroundColor, 1.3)
+                    border.color: Material.accent
+                    border.width: 1
+                    radius: 4
+
+                    ScrollView {
+                        anchors.fill: parent
+                        anchors.margins: 4 * root.scaleFactor
+                        clip: true
+                        ScrollBar.horizontal.policy: ScrollBar.AsNeeded
+                        ScrollBar.vertical.policy: ScrollBar.Never
+
+                        TextArea {
+                            text: lastMessagePanel.liveTopic
+                            readOnly: true
+                            wrapMode: TextArea.NoWrap
+                            selectByMouse: true
+                            font.family: root.fontFamily
+                            font.pixelSize: 12
+                            font.bold: true
+                            color: Material.accent
+                            padding: 6 * root.scaleFactor
+                            background: Rectangle { color: "transparent" }
+                        }
+                    }
+                }
+
+                // Timestamp + format badge + raw/format toggle
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 6 * root.scaleFactor
+
+                    Label {
+                        text: lastMessagePanel.liveTimestamp
+                        font.pixelSize: 10
+                        opacity: 0.6
+                        color: Material.foreground
+                        Layout.fillWidth: true
+                        elide: Text.ElideRight
+                    }
+
+                    Rectangle {
+                        visible: lastMessagePanel.detectedFormat !== "raw"
+                        color: lastMessagePanel.detectedFormat === "json"
+                            ? Material.color(Material.Teal) : Material.color(Material.Purple)
+                        radius: 3
+                        implicitWidth: panelFmtText.implicitWidth + 8
+                        implicitHeight: panelFmtText.implicitHeight + 4
+
+                        Text {
+                            id: panelFmtText
+                            anchors.centerIn: parent
+                            text: lastMessagePanel.detectedFormat.toUpperCase()
+                            color: "white"
+                            font.pixelSize: 9
+                            font.bold: true
+                        }
+                    }
+
+                    Button {
+                        visible: lastMessagePanel.detectedFormat !== "raw"
+                        text: lastMessagePanel.showFormatted ? "Raw" : "Format"
+                        flat: true
+                        font.pixelSize: 10
+                        implicitHeight: 24 * root.scaleFactor
+                        onClicked: lastMessagePanel.showFormatted = !lastMessagePanel.showFormatted
+                    }
+                }
+
+                // Message content
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    Layout.minimumHeight: 80 * root.scaleFactor
+                    color: Qt.darker(Material.backgroundColor, 1.3)
+                    border.color: Material.accent
+                    border.width: 1
+                    radius: 4
+
+                    ScrollView {
+                        anchors.fill: parent
+                        anchors.margins: 4 * root.scaleFactor
+                        clip: true
+
+                        TextArea {
+                            text: lastMessagePanel.displayMessage
+                            readOnly: true
+                            wrapMode: TextArea.Wrap
+                            selectByMouse: true
+                            font.family: root.fontFamily
+                            font.pixelSize: 11
+                            color: Material.foreground
+                            padding: 6 * root.scaleFactor
+                            background: Rectangle { color: "transparent" }
+                        }
+                    }
+                }
+
+                // History header
+                RowLayout {
+                    Layout.fillWidth: true
+
+                    Label {
+                        text: "History (" + lastMessagePanel.liveHistory.length + ")"
+                        font.bold: true
+                        font.pixelSize: 11
+                        color: Material.foreground
+                    }
+
+                    Item { Layout.fillWidth: true }
+
+                    Button {
+                        text: "Clear"
+                        enabled: lastMessagePanel.liveHistory.length > 0
+                        flat: true
+                        font.pixelSize: 10
+                        implicitHeight: 24 * root.scaleFactor
+                        Material.foreground: Material.color(Material.Red)
+                        onClicked: root.mqttTreeModel.clearHistory(lastMessagePanel.liveTopic)
+                    }
+                }
+
+                // History list
+                ScrollView {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    Layout.minimumHeight: 60 * root.scaleFactor
+                    clip: true
+
+                    ListView {
+                        id: miniHistoryView
+                        model: lastMessagePanel.liveHistory
+                        spacing: 4 * root.scaleFactor
+                        property int selectedIndex: -1
+                        onModelChanged: selectedIndex = -1
+
+                        EmptyStateView {
+                            visible: lastMessagePanel.liveHistory.length === 0
+                            width: miniHistoryView.width
+                            height: 80 * root.scaleFactor
+                            icon: ""
+                            title: "No history yet"
+                            subtitle: ""
+                            scaleFactor: root.scaleFactor
+                        }
+
+                        delegate: Rectangle {
+                            id: histItem
+                            required property var modelData
+                            required property int index
+
+                            property bool isSelected: miniHistoryView.selectedIndex === histItem.index
+                            property string detectedFmt: {
+                                var msg = modelData.message || ""
+                                return msg.length > 0 ? Formatter.detectFormat(msg) : "raw"
+                            }
+                            property string formattedMsg: {
+                                var msg = modelData.message || ""
+                                if (!msg || detectedFmt === "raw") return msg
+                                var r = Formatter.beautify(msg, detectedFmt)
+                                return (typeof r === "object" && r.error) ? msg : r
+                            }
+
+                            width: miniHistoryView.width
+                            height: miniHistCol.implicitHeight + 12 * root.scaleFactor
+                            Behavior on height { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+
+                            color: histItem.isSelected
+                                ? Qt.rgba(Material.accent.r, Material.accent.g, Material.accent.b, 0.15)
+                                : (index % 2 === 0
+                                    ? Qt.darker(Material.backgroundColor, 1.4)
+                                    : Qt.darker(Material.backgroundColor, 1.6))
+                            Behavior on color { ColorAnimation { duration: 90 } }
+
+                            border.color: histItem.isSelected
+                                ? Qt.rgba(Material.accent.r, Material.accent.g, Material.accent.b, 0.6)
+                                : Qt.rgba(Material.accent.r, Material.accent.g, Material.accent.b, 0.3)
+                            border.width: histItem.isSelected ? 1.5 : 1
+                            radius: 4
+
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: miniHistoryView.selectedIndex =
+                                    (miniHistoryView.selectedIndex === histItem.index) ? -1 : histItem.index
+                            }
+
+                            ColumnLayout {
+                                id: miniHistCol
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.top: parent.top
+                                anchors.margins: 6 * root.scaleFactor
+                                spacing: 3 * root.scaleFactor
+
+                                // Header: badge + timestamp + format pill
+                                RowLayout {
+                                    Layout.fillWidth: true
+
+                                    Rectangle {
+                                        width: 22 * root.scaleFactor
+                                        height: 14 * root.scaleFactor
+                                        color: Material.accent
+                                        radius: 2
+                                        Label {
+                                            text: "#" + (lastMessagePanel.liveHistory.length - histItem.index)
+                                            font.bold: true
+                                            font.pixelSize: 8
+                                            color: "white"
+                                            anchors.centerIn: parent
+                                        }
+                                    }
+
+                                    Label {
+                                        text: modelData.timestamp || ""
+                                        font.pixelSize: 9
+                                        opacity: 0.6
+                                        color: Material.foreground
+                                        Layout.fillWidth: true
+                                        elide: Text.ElideRight
+                                    }
+
+                                    Rectangle {
+                                        visible: histItem.detectedFmt !== "raw"
+                                        color: histItem.detectedFmt === "json"
+                                            ? Material.color(Material.Teal)
+                                            : Material.color(Material.Purple)
+                                        radius: 2
+                                        implicitWidth: histFmtText.implicitWidth + 6
+                                        implicitHeight: histFmtText.implicitHeight + 3
+                                        Text {
+                                            id: histFmtText
+                                            anchors.centerIn: parent
+                                            text: histItem.detectedFmt.toUpperCase()
+                                            color: "white"
+                                            font.pixelSize: 8
+                                            font.bold: true
+                                        }
+                                    }
+                                }
+
+                                // Collapsed: 2-line truncated preview
+                                Text {
+                                    visible: !histItem.isSelected
+                                    text: modelData.message || ""
+                                    color: Material.foreground
+                                    font.family: root.fontFamily
+                                    font.pixelSize: 10
+                                    Layout.fillWidth: true
+                                    wrapMode: Text.Wrap
+                                    maximumLineCount: 2
+                                    elide: Text.ElideRight
+                                }
+
+                                // Expanded: full formatted content
+                                ScrollView {
+                                    visible: histItem.isSelected
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: Math.min(
+                                        expandedText.implicitHeight + 12 * root.scaleFactor,
+                                        180 * root.scaleFactor)
+                                    clip: true
+
+                                    TextArea {
+                                        id: expandedText
+                                        text: histItem.isSelected ? histItem.formattedMsg : ""
+                                        readOnly: true
+                                        wrapMode: TextArea.Wrap
+                                        selectByMouse: true
+                                        font.family: root.fontFamily
+                                        font.pixelSize: 10
+                                        color: Material.foreground
+                                        padding: 4 * root.scaleFactor
+                                        background: Rectangle { color: "transparent" }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
