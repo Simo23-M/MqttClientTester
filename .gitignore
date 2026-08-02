@@ -3,3 +3,4 @@ build/
 *.pro.user*
 CMakeLists.txt.user
 CMakeUserPresets.json
+Makefile
